@@ -224,6 +224,8 @@ const S = {
   sel:-1, selB:-1, pickB:false, corr:{}, tab:'point', playing:null,
   packP:{}, estMeta:null, both:true, asymMode:'tide', asymAbs:false, useEst:false, mapsEst:null, estOK:false, c1view:'day', c1years:false, c2range:0, c3range:0, c2win:0,
 };
+// running from this computer (localhost / file) rather than a public host: start with PeMS estimates included
+const IS_LOCAL=['localhost','127.0.0.1','[::1]',''].includes(location.hostname) || location.protocol==='file:';
 const MAPS=()=> (S.useEst && S.mapsEst) ? S.mapsEst : S.maps;     // measured-only, or measured + PeMS-estimated
 const ckey=i=>(S.useEst?'e':'m')+i;
 let map, segs=[], field=null, selMarker, bMarker, tip;
@@ -356,7 +358,7 @@ async function boot(){
   S.st.forEach(s=>{ s.ck=s.fwy+s.dir; s.cpos=S.corr[s.ck].indexOf(s.i); });
 
   buildControls(); buildMap();
-  fetch('data/est/meta.json').then(r=>r.ok?r.json():null).then(m=>{ S.estOK=!!m && m.stations===S.N; S.estMeta=m; if(!S.estOK){ $('#useEst').disabled=true; $('#estState').textContent='(not built)'; } }).catch(()=>{ $('#useEst').disabled=true; $('#estState').textContent='(not built)'; });
+  fetch('data/est/meta.json').then(r=>r.ok?r.json():null).then(m=>{ S.estOK=!!m && m.stations===S.N; S.estMeta=m; if(!S.estOK){ $('#useEst').disabled=true; $('#estState').textContent='(not built)'; } else if(IS_LOCAL){ const b=$('#useEst'); b.checked=true; b.dispatchEvent(new Event('change')); } }).catch(()=>{ $('#useEst').disabled=true; $('#estState').textContent='(not built)'; });
   S.sel = canon(nearest(37.45,-122.14,101) ?? 0);
   $('#loading').remove();
   $('#badge').textContent = S.meta.source; $('#badge').className = 'badge'+(S.meta.synthetic?'':' ok');
