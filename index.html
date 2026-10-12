@@ -257,18 +257,39 @@ function oppOf(i){                                    // nearest detector on the
 // the directions to graph: selected first, then opposite (if enabled and available)
 function dirsFor(i){ const out=[{i,color:css('--c1'),label:DIRWORD[S.st[i].dir]}];
   const o=S.both?oppOf(i):null; if(o!==null) out.push({i:o,color:css('--c3'),label:DIRWORD[S.st[o].dir]}); return out; }
-// average of map cells across years & days for one station (NaN if none)
+// Average speed for every [time slot][detector], averaged over the selected years and days (NaN = no data).
+// Built once per (years, days, dataset) and cached, in one sequential pass over the yearly map files; the map,
+// graphs, heatmaps, corridor diagrams and asymmetry all read from it, so dragging the year range stays fast.
+const ACACHE=new Map(), YCACHE=new Map();
+const dsKey=()=>(S.useEst&&S.mapsEst)?'e':'m';
+// one year, summed over the chosen days of the week (cached; a year range then only needs one add per cell per year)
+function yearAgg(y,dows){
+  const key=y+'|'+dows.join(',')+'|'+dsKey();
+  let a=YCACHE.get(key); if(a){ YCACHE.delete(key); YCACHE.set(key,a); return a; }
+  const n=S.SPD*S.N, sum=new Uint16Array(n), cnt=new Uint8Array(n), m=MAPS()[y];
+  for(const d of dows){ const base=d*n; for(let j=0;j<n;j++){ const v=m[base+j]; if(v!==255){ sum[j]+=v; cnt[j]++; } } }
+  a={sum,cnt}; YCACHE.set(key,a); if(YCACHE.size>48) YCACHE.delete(YCACHE.keys().next().value);
+  return a;
+}
+function avgCube(ys,dows){
+  const key=ys.join(',')+'|'+dows.join(',')+'|'+dsKey();
+  let a=ACACHE.get(key); if(a){ ACACHE.delete(key); ACACHE.set(key,a); return a; }
+  const n=S.SPD*S.N, sum=new Float32Array(n), cnt=new Uint8Array(n);
+  for(const y of ys){ const g=yearAgg(y,dows), gs=g.sum, gc=g.cnt; for(let j=0;j<n;j++){ sum[j]+=gs[j]; cnt[j]+=gc[j]; } }
+  for(let j=0;j<n;j++) sum[j]= cnt[j]? sum[j]/cnt[j] : NaN;
+  ACACHE.set(key,sum); if(ACACHE.size>8) ACACHE.delete(ACACHE.keys().next().value);
+  return sum;
+}
+// a single detector's values: read the yearly files directly (cheap for a few detectors; avgCube is for many at once)
 function cell(i, ys, dows, s){
-  let sum=0,c=0;
-  const M=MAPS(); for(const y of ys){ const m=M[y]; for(const d of dows){ const v=m[(d*S.SPD+s)*S.N+i]; if(v!==255){sum+=v;c++} } }
+  let sum=0,c=0; const M=MAPS(), N=S.N;
+  for(const y of ys){ const m=M[y]; for(const d of dows){ const v=m[(d*S.SPD+s)*N+i]; if(v!==255){sum+=v;c++} } }
   return c? sum/c : NaN;
 }
 function profile(i, ys, dows){ const p=new Float32Array(S.SPD); for(let s=0;s<S.SPD;s++) p[s]=cell(i,ys,dows,s); return p; }
-function computeField(slot, ys, dows){
-  const f=new Float32Array(S.N);
-  for(let i=0;i<S.N;i++) f[i]=cell(i,ys,dows,slot);
-  return f;
-}
+function profilesFromCube(list, ys, dows){ const AC=avgCube(ys,dows), N=S.N, SPD=S.SPD;
+  return list.map(i=>{ const p=new Float32Array(SPD); for(let s=0;s<SPD;s++) p[s]=AC[s*N+i]; return p; }); }
+function computeField(slot, ys, dows){ const N=S.N; return avgCube(ys,dows).slice(slot*N,(slot+1)*N); }
 
 // ---------------------------------------------------------------- colors
 const STOPS=[[0,[107,0,0]],[.25,[200,30,30]],[.45,[244,109,67]],[.62,[250,200,60]],[.8,[160,210,90]],[1,[26,152,80]]];
@@ -282,6 +303,19 @@ function lerpStops(stops,p){
 }
 const DSTOPS=[[0,[215,25,28]],[.35,[245,150,110]],[.5,[225,225,225]],[.65,[150,205,130]],[1,[26,152,80]]];
 const MPH_RED=30, MPH_GREEN=65;                       // mph scale: dark red at <=30, solid green at 65 and above
+const RGBLUT=(()=>{ const L=new Uint8ClampedArray(1001*3);
+  for(let i=0;i<=1000;i++){ const p=i/1000; let c=STOPS[STOPS.length-1][1];
+    for(let k=1;k<STOPS.length;k++) if(p<=STOPS[k][0]){ const [p0,c0]=STOPS[k-1],[p1,c1]=STOPS[k],u=(p-p0)/(p1-p0); c=[c0[0]+(c1[0]-c0[0])*u,c0[1]+(c1[1]-c0[1])*u,c0[2]+(c1[2]-c0[2])*u]; break; }
+    L[i*3]=c[0]; L[i*3+1]=c[1]; L[i*3+2]=c[2]; } return L; })();
+// paint a [rows x cols] grid of speeds into a canvas rectangle as one scaled image (nearest-neighbour)
+function paintGrid(ctx,x,y,w,h,cols,rows,valueAt,ffAt){   // valueAt(row,col) -> mph or NaN; row 0 is drawn at the TOP
+  const cv=document.createElement('canvas'); cv.width=cols; cv.height=rows; const c2=cv.getContext('2d'), img=c2.createImageData(cols,rows), d=img.data;
+  for(let r=0;r<rows;r++){ const ff=ffAt(r); for(let c=0;c<cols;c++){ const v=valueAt(r,c), o=(r*cols+c)*4;
+    if(isNaN(v)){ d[o]=138; d[o+1]=143; d[o+2]=152; } else { const p=Math.max(0,Math.min(1,speedP(v,ff))), li=Math.round(p*1000)*3; d[o]=RGBLUT[li]; d[o+1]=RGBLUT[li+1]; d[o+2]=RGBLUT[li+2]; }
+    d[o+3]=255; } }
+  c2.putImageData(img,0,0); ctx.save(); ctx.imageSmoothingEnabled=false; ctx.drawImage(cv,0,0,cols,rows,x,y,w,h); ctx.restore();
+}
+const speedP=(v,ff)=> S.metric==='pct'? v/ff : (v-MPH_RED)/(MPH_GREEN-MPH_RED);
 const speedColor = (v,ff) => isNaN(v)?'#8a8f98' : lerpStops(STOPS, S.metric==='pct'? v/ff : (v-MPH_RED)/(MPH_GREEN-MPH_RED));
 function deltaRange(){ return S.metric==='pct'?25:15; }
 const deltaColor = d => isNaN(d)?'#8a8f98' : lerpStops(DSTOPS,(d/deltaRange()+1)/2);
@@ -738,7 +772,7 @@ function renderWeekHeat(){
 // ---- corridor time-space
 function renderTS(){
   const ys=yearsSel(), dows=dayList(), dirs=dirsFor(S.sel);
-  const panels=dirs.map(d=>{ const list=S.corr[S.st[d.i].ck]; return {d,list,profs:list.map(i=>profile(i,ys,dows))}; });
+  const panels=dirs.map(d=>{ const list=S.corr[S.st[d.i].ck]; return {d,list,profs:profilesFromCube(list,ys,dows)}; });
   const l0=panels[0].list;
   $('#corrWho').textContent=`${S.st[S.sel].fwy} · ${l0.length} detectors · PM ${S.st[l0[0]].pm.toFixed(0)}–${S.st[l0[l0.length-1]].pm.toFixed(0)}`;
   const PH=300, T0=20, B=20, L_=38, cv=$('#tsHeat'), {ctx,w,h}=sizeCanvas(cv,PH*panels.length);
@@ -746,8 +780,7 @@ function renderTS(){
   panels.forEach((P,n)=>{
     const y0=n*PH, list=P.list, rh=(PH-T0-B)/list.length;
     ctx.font='600 12px system-ui'; ctx.fillStyle=css('--ink'); ctx.fillText(dirLabel(P.d.i)+'  (postmile increases upward)',2,y0+13); ctx.font='11px system-ui';
-    for(let k=0;k<list.length;k++){ const y=y0+T0+(list.length-1-k)*rh, ff=S.st[list[k]].ff;
-      for(let sl=0;sl<S.SPD;sl++){ ctx.fillStyle=speedColor(P.profs[k][sl],ff); ctx.fillRect(L_+sl*cw,y,cw+.5,rh+.5); } }
+    paintGrid(ctx,L_,y0+T0,S.SPD*cw,list.length*rh,S.SPD,list.length,(r,c)=>P.profs[list.length-1-r][c],r=>S.st[list[list.length-1-r]].ff);
     ctx.fillStyle=css('--muted');
     const p0=S.st[list[0]].pm, p1=S.st[list[list.length-1]].pm;
     for(let t=0;t<=4;t++){ const pm=p0+(p1-p0)*t/4, y=y0+T0+(PH-T0-B)*(1-t/4); ctx.fillText(pm.toFixed(0),2,Math.min(y0+PH-B,Math.max(y0+T0+8,y+4))); }
@@ -862,9 +895,9 @@ let asymCache={key:''};
 function delayAreas(){
   const dows=dayList(), ys=yearsSel(), key=[dows,S.y0,S.y1,S.useEst].join('|');
   if(asymCache.key===key) return asymCache;
-  const N=S.N, am=new Float32Array(N).fill(NaN), pm=new Float32Array(N).fill(NaN), half=S.SPD/2, dt=S.sm/60;
+  const N=S.N, am=new Float32Array(N).fill(NaN), pm=new Float32Array(N).fill(NaN), half=S.SPD/2, dt=S.sm/60, AC=avgCube(ys,dows);
   for(let i=0;i<N;i++){ const ff=S.st[i].ff; let a=0,na=0,p=0,np=0;
-    for(let s=0;s<S.SPD;s++){ const v=cell(i,ys,dows,s); if(isNaN(v)) continue; const d=Math.max(0,ff-v); if(s<half){a+=d;na++} else {p+=d;np++} }
+    for(let s=0;s<S.SPD;s++){ const v=AC[s*N+i]; if(isNaN(v)) continue; const d=Math.max(0,ff-v); if(s<half){a+=d;na++} else {p+=d;np++} }
     if(na>=0.8*half) am[i]=a*dt*(half/na);                    // need >= 80% of the half-day; scale up for the rest
     if(np>=0.8*half) pm[i]=p*dt*(half/np);
   }
@@ -952,7 +985,7 @@ function renderAsym(){
 // ---- Region tab
 function renderTrends(){
   const dows=dayList(), thr=S.thr, o1=baseOpts();
-  const frac=(ys,sl)=>{ let c=0,n=0; for(let i=0;i<S.N;i++){ const v=cell(i,ys,dows,sl); if(!isNaN(v)){n++; if(v<thr) c++;} } return n? 100*c/n : null; };
+  const frac=(ys,sl)=>{ const AC=avgCube(ys,dows), N=S.N, o=sl*N; let c=0,n=0; for(let i=0;i<N;i++){ const v=AC[o+i]; if(!isNaN(v)){n++; if(v<thr) c++;} } return n? 100*c/n : null; };
   $('#c5sub').textContent=`% of sensors slower than ${thr} mph on a typical ${dayName()} at ${slotTime(S.slot)}, by year.`;
   const ds=[{label:'% congested',data:S.years.map(y=>frac([y],S.slot)),backgroundColor:S.years.map(y=>y>=S.y0&&y<=S.y1?css('--c1'):css('--c1')+'55'),borderRadius:3}];
   const o=baseOpts(); o.scales.x={type:'category',ticks:{color:css('--muted')},grid:{display:false}}; o.scales.y.title.text='% of sensors'; o.scales.y.min=0;
