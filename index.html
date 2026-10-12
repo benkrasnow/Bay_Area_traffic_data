@@ -1,0 +1,1000 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bay Area Traffic Trends</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{
+  --bg:#f5f6f8; --panel:#ffffff; --ink:#1b2430; --muted:#5f6b7a; --line:#dde2e8; --accent:#2563eb; --accent-ink:#fff;
+  --c1:#2563eb; --c2:#ea580c; --c3:#7c3aed; --grid:#e6e9ee; --warn-bg:#fff4d6; --warn-ink:#6b4b00;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12161c; --panel:#1b222b; --ink:#e7ebf0; --muted:#9aa6b4; --line:#2e3844; --accent:#5b8def; --accent-ink:#0b1220;
+    --c1:#6ea0ff; --c2:#ff9a5c; --c3:#b794f6; --grid:#2a333e; --warn-bg:#3a3010; --warn-ink:#ffe28a;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column}
+header{background:var(--panel);border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center}
+h1{font-size:17px;margin:0;font-weight:650;white-space:nowrap}
+.badge{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--warn-bg);color:var(--warn-ink)}
+.badge.ok{background:var(--grid);color:var(--muted)}
+.controls{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;flex:1}
+.group{display:flex;align-items:center;gap:6px}
+.group>label{color:var(--muted);font-size:12px}
+.pills{display:flex;gap:2px;flex-wrap:wrap}
+button,select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 9px;cursor:pointer}
+button:hover,select:hover{border-color:var(--accent)}
+button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+input[type=range]{width:200px;accent-color:var(--accent)}
+#yrs{position:relative;width:300px;height:40px;touch-action:none;user-select:none;cursor:pointer}
+#yrTicks{position:absolute;inset:0;pointer-events:none}
+#yrTicks i{position:absolute;top:19px;width:1px;height:6px;background:var(--muted);opacity:.7}
+#yrTicks span{position:absolute;top:26px;transform:translateX(-50%);font-size:10px;color:var(--muted);font-style:normal}
+#yrTicks u{position:absolute;top:15px;height:4px;left:14px;right:14px;background:var(--grid);border-radius:2px;text-decoration:none}
+#yrBand{position:absolute;top:8px;height:18px;background:var(--accent);opacity:.35;border-radius:4px;cursor:grab;outline-offset:2px}
+#yrBand:active{cursor:grabbing}
+.yrH{position:absolute;top:4px;width:12px;height:26px;background:var(--accent);border:2px solid var(--panel);box-shadow:0 0 0 1px var(--accent);cursor:ew-resize;outline-offset:2px}
+#yrS{border-radius:6px 2px 2px 6px}#yrE{border-radius:2px 6px 6px 2px}
+#yrLabel{min-width:84px;font-variant-numeric:tabular-nums}
+#timeLabel{min-width:72px;font-variant-numeric:tabular-nums;font-weight:600}
+main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 540px}
+#mapWrap{position:relative;min-height:0}
+#map{position:absolute;inset:0;background:var(--bg)}
+.basetiles{filter:grayscale(.85) contrast(.9) brightness(1.05)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .basetiles{filter:grayscale(1) invert(1) brightness(.75) contrast(.9)}}
+#sideTitle{position:absolute;z-index:500;left:12px;top:12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-weight:600;box-shadow:0 2px 8px #0002;max-width:70%}
+#hint{position:absolute;z-index:500;left:12px;top:56px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--muted);box-shadow:0 2px 8px #0002;transition:opacity .6s}
+#hint.dim{opacity:.55}
+.estLbl{white-space:nowrap;cursor:pointer;color:var(--ink);font-size:13px}
+.estNote{max-width:330px;font-size:11px;line-height:1.25;color:var(--muted);cursor:help}
+#estState{color:var(--muted);font-size:11px}
+#legend{position:absolute;z-index:500;left:12px;bottom:22px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px;box-shadow:0 2px 8px #0002;font-size:12px}
+#legend .bar{height:10px;width:220px;border-radius:5px;margin:4px 0 2px}
+#legend .lbls{display:flex;justify-content:space-between;color:var(--muted)}
+aside{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.tabs{display:flex;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;border:0;border-radius:0;border-bottom:3px solid transparent;padding:10px 2px;background:none;font-size:13px}
+.tabs button.on{background:none;color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.pane{display:none;overflow:auto;padding:12px 14px 24px;flex:1}
+.pane.on{display:block}
+.pane h3{margin:18px 0 2px;font-size:14px}
+.pane h3:first-child{margin-top:0}
+.sub{color:var(--muted);font-size:12px;margin:0 0 6px}
+.row{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin:4px 0}
+.chartbox{position:relative;height:230px}
+canvas.heat{width:100%;display:block;cursor:crosshair}
+#c1{cursor:ew-resize;touch-action:pan-y}
+.who{font-weight:600}
+.note{color:var(--muted);font-size:12px}
+.msg{padding:8px 10px;background:var(--grid);border-radius:6px;margin:6px 0}
+table{border-collapse:collapse;width:100%;font-size:13px}
+td,th{padding:3px 6px;text-align:left;border-bottom:1px solid var(--line)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+tr.click{cursor:pointer}tr.click:hover{background:var(--grid)}
+.good{color:#1a9850}.bad{color:#d7191c}
+#loading{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;z-index:2000;text-align:center;padding:20px}
+#loading pre{background:var(--panel);border:1px solid var(--line);padding:8px 12px;border-radius:6px;text-align:left}
+@media (max-width:900px){
+  body{height:auto}
+  main{grid-template-columns:1fr;grid-template-rows:60vh auto}
+  aside{border-left:0;border-top:1px solid var(--line)}
+  input[type=range]{width:140px}
+}
+</style>
+</head>
+<body>
+<div id="loading"><div id="loadMsg">Loading traffic data…</div></div>
+<header>
+  <h1>Bay Area Traffic Trends</h1>
+  <span id="badge" class="badge ok"></span>
+  <div class="controls">
+    <div class="group"><label>Day</label><div class="pills" id="dayPills"></div></div>
+    <div class="group"><label>Time</label>
+      <input type="range" id="slot" min="0" max="23" value="8"><span id="timeLabel"></span>
+      <button id="play" title="Animate through the day (space)">▶</button></div>
+    <div class="group"><label>Years</label>
+      <div id="yrs" title="Drag a handle to change the start or end year; drag the bar to slide the whole range">
+        <div id="yrTicks"></div><div id="yrBand" tabindex="0"></div>
+        <div class="yrH" id="yrS" tabindex="0" role="slider" aria-label="Start year"></div>
+        <div class="yrH" id="yrE" tabindex="0" role="slider" aria-label="End year"></div>
+      </div><b id="yrLabel"></b></div>
+    <div class="group"><label>Show</label><select id="metric">
+      <option value="mph">Speed (mph)</option><option value="pct">% of free-flow speed</option></select></div>
+    <div class="group" id="estGroup"><label class="estLbl"><input type="checkbox" id="useEst"> Include PeMS estimates <span id="estState"></span></label>
+      <span class="estNote" title="Caltrans PeMS itself is missing data: many roadside detectors fail, lose power or communications, or are under construction. For those, PeMS publishes computed estimates (flagged 0% observed) instead of measurements. By default this app shows only real measurements, so the map and graphs have gaps where a detector was down.">&#9432; PeMS has gaps: many detectors fail or go offline, and PeMS fills them with estimates, not measurements.</span></div>
+  </div>
+</header>
+<main>
+  <div id="mapWrap"><div id="map"></div><div id="sideTitle"></div><div id="hint">👆 Click any freeway to move the <b>○</b> and inspect that spot</div><div id="legend"></div></div>
+  <aside>
+    <div class="tabs" id="tabs">
+      <button data-t="point" class="on">Point</button><button data-t="corr">Corridor</button>
+      <button data-t="route">Route</button><button data-t="asym">Asymmetry</button><button data-t="cmp">Compare</button><button data-t="trends">Region</button>
+    </div>
+
+    <section class="pane on" id="pane-point">
+      <div class="who" id="pointWho">Click a freeway on the map</div>
+      <h3>Through the day</h3>
+      <p class="sub">Typical speed over 24 hours (or a whole week). Click the graph to set the map time.</p>
+      <div class="row">
+        <span class="pills" id="c1view"><button data-v="day" class="on">Day</button><button data-v="week">Week</button></span>
+        <label><input type="checkbox" id="c1years"> one line per year</label>
+        
+      </div>
+      <div class="chartbox"><canvas id="c1"></canvas></div>
+
+      <h3>This time of week, over the years</h3>
+      <p class="sub" id="c2sub"></p>
+      <div class="row">
+        <span class="pills" id="c2range"><button data-r="1">1y</button><button data-r="3">3y</button><button data-r="5">5y</button><button data-r="0" class="on">All</button></span>
+        <label>Window <select id="c2win"></select></label>
+      </div>
+      <div class="chartbox"><canvas id="c2"></canvas></div>
+
+      <h3>Week at a glance</h3>
+      <p class="sub">Every day &amp; hour for the selected years. Click a cell to jump the map there.</p>
+      <canvas class="heat" id="weekHeat" height="210"></canvas>
+    </section>
+
+    <section class="pane" id="pane-corr">
+      <div class="who" id="corrWho">Click a freeway on the map</div>
+      <h3>Where &amp; when congestion forms</h3>
+      <p class="sub">Distance along the freeway (vertical) against time of day (horizontal) for the selected day and years. Slow zones growing and shrinking are bottlenecks and their queues.</p>
+      <canvas class="heat" id="tsHeat" height="320"></canvas>
+      <div class="note" id="tsInfo">&nbsp;</div>
+      <h3>Hours of congestion, over time</h3>
+      <p class="sub" id="c3sub"></p>
+      <div class="row">
+        <span class="pills" id="c3range"><button data-r="1">1y</button><button data-r="3">3y</button><button data-r="5">5y</button><button data-r="0" class="on">All</button></span>
+        <label>Congested = below <select id="thr"><option>25</option><option selected>35</option><option>45</option><option>55</option></select> mph</label>
+      </div>
+      <div class="chartbox"><canvas id="c3"></canvas></div>
+    </section>
+
+    <section class="pane" id="pane-route">
+      <h3>Best time to leave</h3>
+      <p class="sub">Pick two points on the <b>same freeway</b>: click the map for the start (A), then press “Pick B” and click the end.</p>
+      <div class="row"><b>A:</b> <span id="rA">—</span> <b>B:</b> <span id="rB">—</span> <button id="pickB">Pick B on map</button></div>
+      <div id="routeMsg" class="msg" style="display:none"></div>
+      <div class="chartbox"><canvas id="c4"></canvas></div>
+      <div id="routeStats"></div>
+    </section>
+
+    <section class="pane" id="pane-asym">
+      <h3>Commute asymmetry</h3>
+      <p class="sub">For every freeway location, how much slower than free-flow is each direction in the morning (12a&ndash;12p) and in the evening (12p&ndash;12a)? That slow-down is the "area above the curve" (mph&middot;hours) on the Point graph. The map recolors each location by how lopsided the two directions are. Uses the selected day(s) and years; the time slider doesn't matter here.</p>
+      <div class="row"><label>Measure <select id="asymMode">
+        <option value="tide">Commute tide (morning and evening)</option>
+        <option value="total">Total delay: N/E vs S/W</option>
+        <option value="am">Morning only</option><option value="pm">Evening only</option></select></label>
+        <label><input type="checkbox" id="asymAbs"> magnitude only (ignore which direction)</label></div>
+      <div class="who" id="asymWho">Click a freeway on the map</div>
+      <div class="chartbox"><canvas id="c7"></canvas></div>
+      <div id="asymSummary"></div>
+      <h3>Most lopsided spots</h3>
+      <p class="sub">Click one to go there. (One per stretch of freeway.)</p>
+      <div id="asymList"></div>
+    </section>
+
+    <section class="pane" id="pane-cmp">
+      <h3>Compare with another year</h3>
+      <p class="sub">Pick a year to compare the selected years against. The map then shows the <b>change</b> in speed at the chosen day and time (green = faster now, red = slower), and the other graphs add a dashed line for the comparison year. Choose &ldquo;nothing&rdquo; to switch it off.</p>
+      <div class="row"><label>Compare to <select id="cmp"></select></label></div>
+      <div id="cmpSummary"></div>
+    </section>
+
+    <section class="pane" id="pane-trends">
+      <h3>Share of freeway that is congested</h3>
+      <p class="sub" id="c5sub"></p>
+      <div class="chartbox"><canvas id="c5"></canvas></div>
+      <h3>Region through the day</h3>
+      <p class="sub">Share of all sensors below the congestion threshold for the selected day (threshold set on the Corridor tab).</p>
+      <div class="chartbox"><canvas id="c6"></canvas></div>
+      <h3>Slowest spots right now</h3>
+      <p class="sub">At the map’s selected day &amp; time (one per freeway direction).</p>
+      <div id="slowList"></div>
+      <h3>Biggest changes</h3>
+      <p class="sub" id="chgSub"></p>
+      <div id="chgList"></div>
+    </section>
+  </aside>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"></script>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const DAYFULL = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// ---------------------------------------------------------------- state
+const S = {
+  meta:null, st:[], N:0, SPD:24, sm:60, years:[], maps:{}, cube:{},
+  dayMode:'wd', slot:8, y0:0, y1:0, cmp:null, metric:'mph', thr:35,
+  sel:-1, selB:-1, pickB:false, corr:{}, tab:'point', playing:null,
+  packP:{}, estMeta:null, both:true, asymMode:'tide', asymAbs:false, useEst:false, mapsEst:null, estOK:false, c1view:'day', c1years:false, c2range:0, c3range:0, c2win:0,
+};
+const MAPS=()=> (S.useEst && S.mapsEst) ? S.mapsEst : S.maps;     // measured-only, or measured + PeMS-estimated
+const ckey=i=>(S.useEst?'e':'m')+i;
+let map, segs=[], field=null, selMarker, bMarker, tip;
+
+// ---------------------------------------------------------------- helpers
+const dayList = () => S.dayMode==='wd'?[0,1,2,3,4] : S.dayMode==='mid'?[1,2,3] : S.dayMode==='we'?[5,6] : [S.dayMode];
+const dayName = () => S.dayMode==='wd'?'weekday' : S.dayMode==='mid'?'Tue–Thu day' : S.dayMode==='we'?'weekend day' : DAYFULL[S.dayMode];
+const yearsSel = () => S.years.filter(y=>y>=S.y0 && y<=S.y1);
+const yearsLabel = () => S.y0===S.y1 ? ''+S.y0 : `${S.y0}–${S.y1}`;
+function hourLabel(h){ // h in hours (fractional)
+  h = ((h%24)+24)%24; let hh=Math.floor(h), mm=Math.round((h-hh)*60); if(mm===60){hh++;mm=0}
+  const ap = hh%24<12?'a':'p', h12 = hh%12||12; return mm? `${h12}:${String(mm).padStart(2,'0')}${ap}` : `${h12}${ap}`;
+}
+const slotTime = s => { const m=s*S.sm, h=Math.floor(m/60)%24, mm=m%60; return `${h%12||12}:${String(mm).padStart(2,'0')} ${h<12?'AM':'PM'}`; };
+const mt = (v,ff) => S.metric==='pct' ? 100*v/ff : v;               // metric transform
+const signed = v => { const r=Math.round(v); return (r>0?'+':'')+r; };     // whole-number change, e.g. +3 / -5
+// tooltip row for speed charts (whole mph, or whole % of free-flow)
+const speedLabel = c => `${c.dataset.label}: ${Math.round(c.parsed.y)} ${S.metric==='pct'?'%':'mph'}`;
+const unit = () => S.metric==='pct' ? '% of free-flow' : 'mph';
+const stName = i => { const s=S.st[i]; return `${s.fwy<100?'':''}${s.fwy} ${s.dir}`; };
+const stLabel = i => { const s=S.st[i]; return `${s.fwy.toString().match(/^\d+$/)?'I/SR-':''}${s.fwy} ${s.dir}`.replace('I/SR-',''); };
+
+const OPP={N:'S',S:'N',E:'W',W:'E'}, DIRWORD={N:'Northbound',S:'Southbound',E:'Eastbound',W:'Westbound'};
+const dirLabel = i => `${S.st[i].fwy} ${DIRWORD[S.st[i].dir]||S.st[i].dir}`;
+function oppOf(i){                                    // nearest detector on the same freeway, opposite direction
+  const s=S.st[i]; if(s._opp!==undefined) return s._opp;
+  const list=S.corr[s.fwy+OPP[s.dir]]; let best=null,bd=0.02**2;
+  if(list) for(const j of list){ const o=S.st[j], d=(o.lat-s.lat)**2+((o.lon-s.lon)*0.8)**2; if(d<bd){bd=d;best=j} }
+  return s._opp=best;
+}
+// the directions to graph: selected first, then opposite (if enabled and available)
+function dirsFor(i){ const out=[{i,color:css('--c1'),label:DIRWORD[S.st[i].dir]}];
+  const o=S.both?oppOf(i):null; if(o!==null) out.push({i:o,color:css('--c3'),label:DIRWORD[S.st[o].dir]}); return out; }
+// average of map cells across years & days for one station (NaN if none)
+function cell(i, ys, dows, s){
+  let sum=0,c=0;
+  const M=MAPS(); for(const y of ys){ const m=M[y]; for(const d of dows){ const v=m[(d*S.SPD+s)*S.N+i]; if(v!==255){sum+=v;c++} } }
+  return c? sum/c : NaN;
+}
+function profile(i, ys, dows){ const p=new Float32Array(S.SPD); for(let s=0;s<S.SPD;s++) p[s]=cell(i,ys,dows,s); return p; }
+function computeField(slot, ys, dows){
+  const f=new Float32Array(S.N);
+  for(let i=0;i<S.N;i++) f[i]=cell(i,ys,dows,slot);
+  return f;
+}
+
+// ---------------------------------------------------------------- colors
+const STOPS=[[0,[107,0,0]],[.25,[200,30,30]],[.45,[244,109,67]],[.62,[250,200,60]],[.8,[160,210,90]],[1,[26,152,80]]];
+function lerpStops(stops,p){
+  if(!(p>=0)) p=0; if(p>1)p=1;
+  for(let k=1;k<stops.length;k++) if(p<=stops[k][0]){
+    const [p0,c0]=stops[k-1],[p1,c1]=stops[k],t=(p-p0)/(p1-p0);
+    return `rgb(${Math.round(c0[0]+(c1[0]-c0[0])*t)},${Math.round(c0[1]+(c1[1]-c0[1])*t)},${Math.round(c0[2]+(c1[2]-c0[2])*t)})`;
+  }
+  const c=stops[stops.length-1][1]; return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+const DSTOPS=[[0,[215,25,28]],[.35,[245,150,110]],[.5,[225,225,225]],[.65,[150,205,130]],[1,[26,152,80]]];
+const MPH_RED=30, MPH_GREEN=65;                       // mph scale: dark red at <=30, solid green at 65 and above
+const speedColor = (v,ff) => isNaN(v)?'#8a8f98' : lerpStops(STOPS, S.metric==='pct'? v/ff : (v-MPH_RED)/(MPH_GREEN-MPH_RED));
+function deltaRange(){ return S.metric==='pct'?25:15; }
+const deltaColor = d => isNaN(d)?'#8a8f98' : lerpStops(DSTOPS,(d/deltaRange()+1)/2);
+
+// ---------------------------------------------------------------- data loading (files are pre-compressed .gz)
+async function fetchBin(url){
+  const r=await fetch(url); if(!r.ok) throw new Error(`${r.status} ${url}`);
+  let buf=new Uint8Array(await r.arrayBuffer());
+  if(buf[0]===0x1f && buf[1]===0x8b){                       // still gzipped (a host that adds Content-Encoding would already have unzipped it)
+    if(typeof DecompressionStream==='undefined') throw new Error('This browser cannot unzip the data (needs a recent Chrome, Edge, Firefox or Safari)');
+    const ds=new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
+    buf=new Uint8Array(await new Response(ds).arrayBuffer());
+  }
+  return buf;
+}
+// ---------------------------------------------------------------- boot
+async function boot(){
+  try{
+    const [meta, stj] = await Promise.all([fetch('data/meta.json').then(r=>r.json()), fetch('data/stations.json').then(r=>r.json())]);
+    S.meta=meta; S.SPD=meta.slotsPerDay; S.sm=meta.slotMinutes;
+    S.hsm=meta.hist.slotMinutes; S.HSPD=meta.hist.slotsPerDay;      // per-detector history is stored at a coarser resolution
+    S.st = stj.rows.map((r,i)=>({i,id:r[0],fwy:r[1],dir:r[2],lat:r[3],lon:r[4],pm:r[5],lanes:r[6],ff:r[7]}));
+    S.N = S.st.length;
+    const ny = Math.ceil(meta.months/12), tries=[];
+    for(let k=0;k<ny;k++){ const y=meta.startYear+k;
+      tries.push(fetchBin(`data/map_${y}.bin.gz`).then(b=>{ S.maps[y]=b; }).catch(()=>{})); }
+    await Promise.all(tries);
+    S.years = Object.keys(S.maps).map(Number).sort((a,b)=>a-b);
+    if(!S.years.length) throw new Error('no map files');
+  }catch(e){
+    $('#loadMsg').innerHTML = `<b>Couldn't load the data files.</b><br>Browsers block local file access, so serve this folder over HTTP:
+      <pre>python -m http.server 8000</pre>then open <b>http://localhost:8000</b><br><span class="note">(${e.message})</span>`;
+    return;
+  }
+  // corridors
+  S.st.forEach(s=>{ const k=s.fwy+s.dir; (S.corr[k]=S.corr[k]||[]).push(s.i); });
+  Object.values(S.corr).forEach(a=>a.sort((x,y)=>S.st[x].pm-S.st[y].pm));
+  S.st.forEach(s=>{ s.ck=s.fwy+s.dir; s.cpos=S.corr[s.ck].indexOf(s.i); });
+
+  buildControls(); buildMap();
+  fetch('data/est/meta.json').then(r=>r.ok?r.json():null).then(m=>{ S.estOK=!!m && m.stations===S.N; S.estMeta=m; if(!S.estOK){ $('#useEst').disabled=true; $('#estState').textContent='(not built)'; } }).catch(()=>{ $('#useEst').disabled=true; $('#estState').textContent='(not built)'; });
+  S.sel = canon(nearest(37.45,-122.14,101) ?? 0);
+  $('#loading').remove();
+  $('#badge').textContent = S.meta.source; $('#badge').className = 'badge'+(S.meta.synthetic?'':' ok');
+  new ResizeObserver(()=>map.invalidateSize()).observe($('#map'));
+  refresh();
+}
+function hasData(i){ let c=0; for(const y of S.years) for(const d of [1,2,3]) for(let s=0;s<S.SPD;s++) if(MAPS()[y][(d*S.SPD+s)*S.N+i]!==255) c++; return c>S.SPD*S.years.length; }
+function nearest(lat,lon,fwy){
+  let best=-1,bd=1e9; for(const s of S.st){ if(fwy&&s.fwy!==fwy) continue;
+    const d=(s.lat-lat)**2+((s.lon-lon)*0.8)**2; if(d<bd && hasData(s.i)){bd=d;best=s.i} } return best<0?null:best;
+}
+
+// ---------------------------------------------------------------- controls
+function buildControls(){
+  const pills=$('#dayPills');
+  const mk=(label,val)=>{ const b=document.createElement('button'); b.textContent=label; b.dataset.v=val; b.onclick=()=>{S.dayMode=isNaN(+val)?val:+val;refresh()}; pills.append(b); };
+  DAYS.forEach((d,i)=>mk(d,i)); mk('Tue–Thu','mid'); mk('Mon–Fri','wd'); mk('Sat–Sun','we');
+  const sl=$('#slot'); sl.max=S.SPD-1; S.slot=Math.min(S.SPD-1,Math.round(8*60/S.sm)); sl.value=S.slot;
+  sl.oninput=()=>{S.slot=+sl.value; refresh()};
+  S.y1=S.years[S.years.length-1]; S.y0=S.years[0];   // default: all years
+  buildYearSlider();
+  const cm=$('#cmp'); cm.add(new Option('— nothing —','')); S.years.forEach(y=>cm.add(new Option('year '+y,y)));
+  cm.onchange=e=>{S.cmp=e.target.value===''?null:+e.target.value; refresh()};
+  $('#metric').onchange=e=>{S.metric=e.target.value; refresh()};
+  $('#play').onclick=togglePlay;
+  // press and drag on the "Through the day" graph = drag the time slider (same effect: map and graphs follow)
+  { const cv=$('#c1'); let drag=false;
+    const setTime=e=>{ const ch=charts.c1; if(!ch) return; const sc=ch.scales.x, r=cv.getBoundingClientRect();
+      let x=sc.getValueForPixel(e.clientX-r.left); if(x==null||isNaN(x)) return; x=Math.max(sc.min,Math.min(sc.max-1e-6,x));
+      let hr=x; if(S.c1view==='week'){ const d=Math.max(0,Math.min(6,Math.floor(x/24))); S.dayMode=d; hr=x-d*24; }
+      const slot=Math.max(0,Math.min(S.SPD-1,Math.floor(hr*60/S.sm))); if(slot!==S.slot||S.c1view==='week'){ S.slot=slot; refresh(); } };
+    cv.addEventListener('pointerdown',e=>{ if(e.button!==0) return; drag=true; cv.setPointerCapture(e.pointerId); setTime(e); });
+    cv.addEventListener('pointermove',e=>{ if(drag) setTime(e); });
+    const end=()=>{ drag=false; }; cv.addEventListener('pointerup',end); cv.addEventListener('pointercancel',end); }
+  $('#useEst').onchange=async e=>{
+    const box=e.target, st=$('#estState');
+    if(!box.checked){ S.useEst=false; c3key=''; refresh(); return; }
+    if(!S.mapsEst){                                      // first use: fetch the estimated-data map files
+      box.disabled=true; let done=0; S.mapsEst={};
+      try{ await Promise.all(S.years.map(y=>fetchBin(`data/est/map_${y}.bin.gz`).then(b=>{ S.mapsEst[y]=b; st.textContent=`(loading ${++done}/${S.years.length})`; })));
+        st.textContent=''; }
+      catch(err){ S.mapsEst=null; box.checked=false; st.textContent='(estimated-value data not available)'; box.disabled=false; return; }
+      box.disabled=false;
+    }
+    S.useEst=true; c3key=''; refresh();
+  };
+  document.addEventListener('keydown',e=>{
+    if(['INPUT','SELECT'].includes(e.target.tagName) && e.target.type!=='range') return;
+    if(e.key===' '){e.preventDefault();togglePlay()}
+    if(e.key==='ArrowRight'){S.slot=(S.slot+1)%S.SPD;$('#slot').value=S.slot;refresh()}
+    if(e.key==='ArrowLeft'){S.slot=(S.slot+S.SPD-1)%S.SPD;$('#slot').value=S.slot;refresh()}
+  });
+  $('#tabs').onclick=e=>{ const t=e.target.dataset.t; if(!t) return; S.tab=t;
+    document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+    document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id==='pane-'+t));
+    refresh(); };                                          // refresh: the map is colored differently on the Asymmetry tab
+  $('#asymMode').onchange=e=>{ S.asymMode=e.target.value; refresh(); };
+  $('#asymAbs').onchange=e=>{ S.asymAbs=e.target.checked; refresh(); };
+  $('#c1view').onclick=e=>{ if(!e.target.dataset.v) return; S.c1view=e.target.dataset.v; setOn('#c1view',e.target); renderC1(true); };
+  $('#c1years').onchange=e=>{S.c1years=e.target.checked; renderC1()};
+  $('#c2range').onclick=e=>{ if(!e.target.dataset.r) return; S.c2range=+e.target.dataset.r; setOn('#c2range',e.target); zoomYears('c2',S.c2range); };
+  $('#c3range').onclick=e=>{ if(!e.target.dataset.r) return; S.c3range=+e.target.dataset.r; setOn('#c3range',e.target); zoomYears('c3',S.c3range); };
+  const cw=$('#c2win'); [0,15,30,60].filter(m=>m===0||m>=S.hsm).forEach(m=>cw.add(new Option(m? `± ${m} min`:(S.hsm<60?`exact (${S.hsm}-min bin)`:'exact hour'),m)));
+  cw.onchange=e=>{S.c2win=Math.round(+e.target.value/S.sm); renderC2()};
+  $('#thr').onchange=e=>{S.thr=+e.target.value; renderTab()};
+  $('#pickB').onclick=()=>{S.pickB=!S.pickB; $('#pickB').classList.toggle('on',S.pickB); $('#pickB').textContent=S.pickB?'Click B on the map…':'Pick B on map'};
+  let rt; window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>renderTab(),150)});
+}
+// ---- year-range timeline: drag either end, or drag the bar to slide the whole range
+function setYearRange(a,b){
+  a=Math.max(S.years[0],Math.min(a,S.years[S.years.length-1])); b=Math.max(a,Math.min(b,S.years[S.years.length-1]));
+  const changed=a!==S.y0||b!==S.y1; S.y0=a; S.y1=b; layoutYears(); if(changed) refresh();
+}
+const YPAD=14;
+function yearX(i){ const W=$('#yrs').clientWidth, n=S.years.length; return YPAD+(n>1? i*(W-2*YPAD)/(n-1) : 0); }
+function layoutYears(){
+  const i0=S.years.indexOf(S.y0), i1=S.years.indexOf(S.y1), x0=yearX(i0), x1=yearX(i1);
+  const band=$('#yrBand'); band.style.left=(x0-6)+'px'; band.style.width=Math.max(12,x1-x0+12)+'px';
+  $('#yrS').style.left=(x0-14)+'px'; $('#yrE').style.left=(x1+2)+'px';
+  $('#yrS').setAttribute('aria-valuenow',S.y0); $('#yrE').setAttribute('aria-valuenow',S.y1);
+  $('#yrLabel').textContent = S.y0===S.y1? S.y0 : `${S.y0}–${S.y1}`;
+}
+function buildYearSlider(){
+  const box=$('#yrs'), ticks=$('#yrTicks'), n=S.years.length;
+  const drawTicks=()=>{ ticks.innerHTML='<u></u>'; S.years.forEach((y,i)=>{ const x=yearX(i);
+    ticks.insertAdjacentHTML('beforeend',`<i style="left:${x}px"></i>${(i%2===0||n<7)?`<span style="left:${x}px">${String(y).slice(2)==='' ?y:"'"+String(y).slice(2)}</span>`:''}`); }); layoutYears(); };
+  new ResizeObserver(drawTicks).observe(box); drawTicks();
+  let drag=null;
+  const stepPx=()=>($('#yrs').clientWidth-2*YPAD)/Math.max(1,n-1);
+  const idx=y=>S.years.indexOf(y);
+  box.addEventListener('pointerdown',e=>{
+    const t=e.target; let mode=t.id==='yrS'?'s':t.id==='yrE'?'e':t.id==='yrBand'?'band':null;
+    if(!mode){                                          // click on the track: jump the nearer end there, then keep dragging it
+      const r=box.getBoundingClientRect(), k=Math.max(0,Math.min(n-1,Math.round((e.clientX-r.left-YPAD)/stepPx())));
+      const i0=idx(S.y0), i1=idx(S.y1); mode = (k<i0 || (k<=(i0+i1)/2 && k!==i1)) ? 's' : 'e';
+      if(mode==='s') setYearRange(S.years[k], Math.max(S.years[k],S.y1)); else setYearRange(Math.min(S.y0,S.years[k]), S.years[k]);
+    }
+    drag={mode,x:e.clientX,i0:idx(S.y0),i1:idx(S.y1)}; box.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  box.addEventListener('pointermove',e=>{
+    if(!drag) return; const d=Math.round((e.clientX-drag.x)/stepPx()); let a=drag.i0, b=drag.i1;
+    if(drag.mode==='s'){ a=Math.max(0,Math.min(n-1,a+d)); if(a>b) b=a; }
+    else if(drag.mode==='e'){ b=Math.max(0,Math.min(n-1,b+d)); if(b<a) a=b; }
+    else { const dd=Math.max(-a,Math.min(n-1-b,d)); a+=dd; b+=dd; }
+    setYearRange(S.years[a],S.years[b]);
+  });
+  const end=()=>{ drag=null; }; box.addEventListener('pointerup',end); box.addEventListener('pointercancel',end);
+  box.addEventListener('keydown',e=>{                    // keyboard: arrows move the focused handle / the bar
+    const k=e.key==='ArrowLeft'?-1:e.key==='ArrowRight'?1:0; if(!k) return; e.preventDefault();
+    let a=idx(S.y0), b=idx(S.y1); const id=document.activeElement.id;
+    if(id==='yrS'){ a=Math.max(0,Math.min(n-1,a+k)); if(a>b) b=a; }
+    else if(id==='yrE'){ b=Math.max(0,Math.min(n-1,b+k)); if(b<a) a=b; }
+    else { const dd=Math.max(-a,Math.min(n-1-b,k)); a+=dd; b+=dd; }
+    setYearRange(S.years[a],S.years[b]);
+  });
+}
+function setOn(sel,btn){ document.querySelectorAll(sel+' button').forEach(b=>b.classList.toggle('on',b===btn)); }
+function togglePlay(){
+  if(S.playing){ clearInterval(S.playing); S.playing=null; $('#play').textContent='▶'; return; }
+  $('#play').textContent='⏸';
+  const step=Math.max(1,Math.round(S.SPD/96)), ms=Math.max(125,12000/(S.SPD/step));   // ~12 s per day
+  S.playing=setInterval(()=>{ S.slot=(S.slot+step)%S.SPD; $('#slot').value=S.slot; refresh(); }, ms);
+}
+
+// ---------------------------------------------------------------- map
+function buildMap(){
+  map = L.map('map',{preferCanvas:true,zoomControl:false}).setView([37.62,-122.1],10);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {attribution:'© OpenStreetMap contributors', maxZoom:18, className:'basetiles'}).addTo(map);
+  const canvas = L.canvas({padding:0.4,tolerance:8});
+  tip = L.tooltip({direction:'top', offset:[0,-6]});
+  for(const key in S.corr){                            // unit travel direction per detector
+    const a=S.corr[key];
+    a.forEach((id,k)=>{ const s=S.st[id], p=S.st[a[Math.max(0,k-1)]], q=S.st[a[Math.min(a.length-1,k+1)]];
+      let vx=(q.lon-p.lon)*Math.cos(s.lat*Math.PI/180), vy=q.lat-p.lat; const n=Math.hypot(vx,vy)||1; vx/=n; vy/=n;
+      if(s.dir==='S'||s.dir==='W'){vx=-vx;vy=-vy}      // PM increases N/E; travel is the other way for S/W
+      s.vx=vx; s.vy=vy; });
+  }
+  for(const key in S.corr){
+    const a=S.corr[key];
+    for(let k=0;k<a.length-1;k++){
+      const p=S.st[a[k]], q=S.st[a[k+1]];
+      if(q.pm-p.pm>3) continue;
+      const pl=L.polyline([[p.lat,p.lon],[q.lat,q.lon]],{renderer:canvas,weight:5,opacity:.95,lineCap:'butt',color:'#888'}).addTo(map);
+      pl._a=p.i; pl._b=q.i;
+      pl.on('click',e=>{ const i=closer(pl,e.latlng); onPick(i); L.DomEvent.stopPropagation(e); });
+      pl.on('mousemove',e=>{ const i=closer(pl,e.latlng); tip.setLatLng(e.latlng).setContent(tipText(i)); if(!map.hasLayer(tip)) tip.addTo(map); });
+      pl.on('mouseout',()=>map.removeLayer(tip));
+      segs.push(pl);
+    }
+  }
+  // each direction is drawn to the right of its travel direction, so the two sides of a freeway sit side by side
+  const upd=()=>{ const z=map.getZoom(); const w=z<=9?3:z<=10?4:z<=11?5:z<=12?6:z<=13?8:10; segs.forEach(s=>s.setStyle({weight:w}));
+    S.lanePx=w/2+0.5; segs.forEach(s=>s.setLatLngs([offPos(S.st[s._a]),offPos(S.st[s._b])])); placeMarkers(); };
+  L.control.zoom({position:'topright'}).addTo(map);
+  map.on('zoomend',upd); upd();
+  selMarker=L.circleMarker([0,0],{renderer:canvas,radius:9,color:'#111',weight:3,fillColor:'#fff',fillOpacity:.5,interactive:false}).addTo(map);
+  bMarker=L.circleMarker([0,0],{renderer:canvas,radius:9,color:'#111',weight:3,fillColor:'#2563eb',fillOpacity:.8,interactive:false});
+}
+function offPos(s){
+  const m=S.lanePx*156543.03*Math.cos(s.lat*Math.PI/180)/Math.pow(2,map.getZoom());      // metres
+  return [s.lat - s.vx*m/111320, s.lon + s.vy*m/(111320*Math.cos(s.lat*Math.PI/180))];
+}
+function centerPos(i){ const s=S.st[i], o=oppOf(i); return o===null? [s.lat,s.lon] : [(s.lat+S.st[o].lat)/2,(s.lon+S.st[o].lon)/2]; }
+function placeMarkers(){
+  if(S.sel<0) return; selMarker.setLatLng(centerPos(S.sel));
+  if(S.selB>=0){ bMarker.setLatLng(centerPos(S.selB)); bMarker.addTo(map); } else map.removeLayer(bMarker);
+}
+function closer(pl,ll){ const a=S.st[pl._a],b=S.st[pl._b];
+  return ((a.lat-ll.lat)**2+(a.lon-ll.lng)**2) < ((b.lat-ll.lat)**2+(b.lon-ll.lng)**2) ? a.i : b.i; }
+function tipText(i){ const s=S.st[i]; const v=field?field[i]:NaN;
+  if(S.tab==='asym') return asymTip(i);
+  return `<b>${dirLabel(i)}</b> · postmile ${s.pm.toFixed(1)}<br>${isNaN(v)?'no data':(S.cmp!==null?signed(v)+' '+(S.metric==='pct'?'pts':'mph')+' vs '+S.cmp:Math.round(v)+' '+(S.metric==='pct'?'%':'mph'))}`; }
+function canon(i){ const s=S.st[i]; if(s.dir==='N'||s.dir==='E') return i; const o=oppOf(i); return o!==null? o : i; }
+function onPick(i){
+  i=canon(i);
+  $('#hint').classList.add('dim');
+  if(S.pickB){ S.selB=i; S.pickB=false; $('#pickB').classList.remove('on'); $('#pickB').textContent='Pick B on map'; }
+  else { S.sel=i; if(S.selB>=0 && S.st[S.selB].ck!==S.st[i].ck) S.selB=-1; }
+  refresh();
+}
+
+function recolor(){
+  if(S.tab==='asym'){ recolorAsym(); return; }
+  const dows=dayList();
+  const cur=computeField(S.slot, yearsSel(), dows);          // mph
+  field=new Float32Array(S.N);
+  let base=null;
+  if(S.cmp!==null){
+    base=computeField(S.slot,[S.cmp],dows);
+    for(let i=0;i<S.N;i++) field[i]= S.metric==='pct'? 100*(cur[i]-base[i])/S.st[i].ff : cur[i]-base[i];
+  } else for(let i=0;i<S.N;i++) field[i]=mt(cur[i],S.st[i].ff);
+  for(const pl of segs){
+    const a=pl._a, b=pl._b;
+    let c;
+    if(S.cmp!==null){ const x=field[a], y=field[b]; c=deltaColor(isNaN(x)?y:isNaN(y)?x:(x+y)/2); }
+    else { const x=cur[a], y=cur[b], ff=(S.st[a].ff+S.st[b].ff)/2; c=speedColor(isNaN(x)?y:isNaN(y)?x:(x+y)/2, ff); }
+    pl.setStyle({color:c});
+  }
+}
+function drawLegend(){
+  const lg=$('#legend');
+  if(S.tab==='asym'){ drawAsymLegend(lg); return; }
+  if(S.cmp!==null){
+    const r=deltaRange(), u=S.metric==='pct'?'pts':'mph';
+    const g=DSTOPS.map(([p,c])=>`rgb(${c}) ${p*100}%`).join(',');
+    lg.innerHTML=`<b>Change vs ${S.cmp}</b> <span class="note">(${u})</span><div class="bar" style="background:linear-gradient(90deg,${g})"></div>
+      <div class="lbls"><span>−${r} slower</span><span>0</span><span>+${r} faster</span></div>`;
+  } else {
+    const g=STOPS.map(([p,c])=>`rgb(${c}) ${p*100}%`).join(',');
+    const l=S.metric==='pct'?['0%','25%','50%','75%','100%']:['≤30','39','48','56','65+ mph'];
+    lg.innerHTML=`<b>${S.metric==='pct'?'% of free-flow speed':'Average speed'}</b><div class="bar" style="background:linear-gradient(90deg,${g})"></div>
+      <div class="lbls">${l.map(x=>`<span>${x}</span>`).join('')}</div>`;
+  }
+  if(S.useEst) lg.insertAdjacentHTML('beforeend','<div class="note" style="margin-top:4px">includes PeMS-estimated values<br>(not measurements)</div>');
+}
+
+// ---------------------------------------------------------------- refresh
+let rq=0;
+function refresh(){
+  if(rq) return; rq=requestAnimationFrame(()=>{ rq=0;
+    document.querySelectorAll('#dayPills button').forEach(b=>b.classList.toggle('on', String(b.dataset.v)===String(S.dayMode)));
+    $('#slot').value=S.slot; $('#timeLabel').textContent=slotTime(S.slot);
+    const estTag = S.useEst ? ' · incl. PeMS estimates' : '';
+    $('#sideTitle').textContent = S.cmp!==null
+      ? `Change: typical ${dayName()} ${slotTime(S.slot)}, ${yearsLabel()} vs ${S.cmp}`
+      : `Typical ${dayName()} at ${slotTime(S.slot)} · ${yearsLabel()}`;
+    $('#sideTitle').textContent += estTag;
+    if(S.tab==='asym') $('#sideTitle').textContent = `Commute asymmetry · ${dayName()} · ${yearsLabel()}`+estTag;
+    recolor(); drawLegend();
+    placeMarkers();
+    renderTab();
+  });
+}
+
+// ---------------------------------------------------------------- charts
+const charts={};
+function baseOpts(){
+  const ink=css('--muted'), grid=css('--grid');
+  return {responsive:true, maintainAspectRatio:false, animation:false, interaction:{mode:'index',intersect:false},
+    plugins:{legend:{labels:{color:css('--ink'),boxWidth:12,usePointStyle:true,pointStyle:'line'}}, tooltip:{}},
+    scales:{x:{type:'linear',ticks:{color:ink},grid:{color:grid}}, y:{ticks:{color:ink},grid:{color:grid},title:{display:true,text:unit(),color:ink}}}};
+}
+const zoomOpts=()=>({zoom:{wheel:{enabled:true},pinch:{enabled:true},drag:{enabled:false},mode:'x'},pan:{enabled:true,mode:'x'}});
+function mkChart(id,cfg){ if(charts[id]){charts[id].destroy()}  charts[id]=new Chart($('#'+id),cfg); return charts[id]; }
+const CURSORS={};   // chart id -> () => x positions of the time-of-day cursor (set BEFORE the chart is created, so the first draw has it)
+const cursorPlugin={ id:'cursor', afterDatasetsDraw(ch){
+  const fn=CURSORS[ch.canvas.id]; if(!fn) return; const xs=fn(); const {top,bottom}=ch.chartArea; const ctx=ch.ctx;
+  ctx.save(); ctx.strokeStyle=css('--ink'); ctx.globalAlpha=.55; ctx.setLineDash([4,3]);
+  for(const x of xs){ const px=ch.scales.x.getPixelForValue(x); if(px<ch.chartArea.left||px>ch.chartArea.right) continue;
+    ctx.beginPath(); ctx.moveTo(px,top); ctx.lineTo(px,bottom); ctx.stroke(); }
+  ctx.restore(); } };
+const yearGrad=(k,n)=>`hsl(${215-170*k/Math.max(1,n-1)},70%,${52}%)`;
+const yTicks=(ch)=>{ // y axis range
+  const ff=S.st[S.sel]?.ff||65; return S.metric==='pct'?{min:0,max:110}:{min:0,max:Math.max(70,ff+8)}; };
+
+// ---- C1 time-of-day
+function renderC1(reset){
+  const sm=S.sm, week=S.c1view==='week', dirs=dirsFor(S.sel), s0=S.st[S.sel];
+  $('#pointWho').innerHTML=`○ ${s0.fwy} · postmile ${s0.pm.toFixed(1)} · ${dirs.map(d=>d.label).join(' &amp; ')} <span class="note">(click the map to move)</span>`;
+  const sig=[S.sel,S.dayMode,S.y0,S.y1,S.cmp,S.metric,S.c1view,S.c1years,S.useEst].join('|');
+  if(charts.c1 && charts.c1.$sig===sig && charts.c1.canvas.isConnected){ charts.c1.draw(); return; }
+  const ys=yearsSel(), ds=[];
+  const sx = (d,sl)=> (week?d*24:0)+(sl+.5)*sm/60;
+  const series=(i,yv,dows,label,color,opt={})=>{
+    const ff=S.st[i].ff, data=[];
+    for(const d of (week?[0,1,2,3,4,5,6]:[null])){
+      const p = week? profile(i,yv,[d]) : profile(i,yv,dows);
+      for(let sl=0;sl<S.SPD;sl++) data.push({x:sx(d,sl), y:isNaN(p[sl])?null:mt(p[sl],ff)});
+      if(week) data.push({x:d*24+24,y:null});
+    }
+    return Object.assign({label,data,borderColor:color,backgroundColor:color,pointRadius:0,pointHoverRadius:4,tension:.25,borderWidth:2.5,spanGaps:false},opt);
+  };
+  if(S.c1years) S.years.forEach((y,k)=>ds.push(series(S.sel,[y],dayList(),`${dirs[0].label} ${y}`,yearGrad(k,S.years.length),{borderWidth:1.3})));
+  for(const d of dirs){
+    ds.push(series(d.i,ys,dayList(),`${d.label} ${yearsLabel()}`,d.color,{borderWidth:3}));
+    if(S.cmp!==null) ds.push(series(d.i,[S.cmp],dayList(),`${d.label} ${S.cmp}`,d.color,{borderDash:[6,4],borderWidth:2}));
+  }
+  const o=baseOpts(); Object.assign(o.scales.y,yTicks()); o.scales.y.title.text=unit();
+  o.scales.x.min=0; o.scales.x.max=week?168:24;
+  o.scales.x.afterBuildTicks=sc=>{ const r=sc.max-sc.min, st=week?(r>100?24:r>48?12:r>24?6:r>10?3:1):(r>20?3:r>8?1:r>3?.5:.25);
+    const t=[]; for(let v=Math.ceil(sc.min/st)*st; v<=sc.max+1e-9; v+=st) t.push({value:v}); sc.ticks=t; };
+  o.scales.x.ticks.callback=v=>week&&v%24===0&&v<168? DAYS[v/24] : hourLabel(v);
+  o.plugins.tooltip.callbacks={title:it=>{const x=it[0].parsed.x; return week?`${DAYS[Math.min(6,Math.floor(x/24))]} ${hourLabel(x%24)}`:hourLabel(x)}, label:speedLabel};
+  o.scales.y.ticks.precision=0;
+  o.onClick=(e,el,ch)=>{ const x=ch.scales.x.getValueForPixel(e.x); if(x==null) return;
+    const hr=week? x%24 : x; if(week){ const d=Math.floor(x/24); if(d>=0&&d<7) S.dayMode=d; }
+    S.slot=Math.max(0,Math.min(S.SPD-1,Math.floor(hr*60/sm))); refresh(); };
+  CURSORS.c1=()=> week? dayList().map(d=>d*24+(S.slot+.5)*sm/60) : [(S.slot+.5)*sm/60];
+  const ch=mkChart('c1',{type:'line',data:{datasets:ds},options:o,plugins:[cursorPlugin]});
+  ch.$sig=sig;
+}
+
+// ---- C2 history of selected time-of-week
+// One history file per freeway direction holds every detector of that corridor back to back
+// ([month][dow][history-slot] each); loading it fills S.cube for all of its detectors.
+async function getCube(i){
+  const k=ckey(i); if(S.cube[k]) return S.cube[k];
+  const s=S.st[i], base=S.useEst?'data/est':'data', pre=S.useEst?'e':'m', pk=pre+s.ck;
+  const range=(S.useEst && S.estMeta? S.estMeta : S.meta).hist.corridors[s.ck]; if(!range) return null;
+  if(!S.packP[pk]) S.packP[pk]=fetchBin(`${base}/hist/${s.ck}.bin.gz`).then(buf=>{
+    const per=S.meta.months*7*S.HSPD;
+    for(let j=0;j<range[1];j++) S.cube[pre+(range[0]+j)]=buf.subarray(j*per,(j+1)*per);
+  }).catch(e=>{ delete S.packP[pk]; throw e; });
+  await S.packP[pk]; return S.cube[k]||null;
+}
+async function getCubes(list,prog){
+  const keys=[...new Set(list.map(i=>S.st[i].ck))], rep=new Map(list.map(i=>[S.st[i].ck,i])); let done=0;
+  await Promise.all(keys.map(async ck=>{ await getCube(rep.get(ck)); prog&&prog(++done,keys.length); }));
+}
+// slots are map-resolution slots; the history is stored at S.hsm minutes, so convert
+function monthAvg(cb,m,dows,slots){ const hs=[...new Set(slots.map(sl=>Math.floor(sl*S.sm/S.hsm)))]; let s=0,c=0; for(const d of dows)for(const h of hs){ const v=cb[(m*7+d)*S.HSPD+h]; if(v!==255){s+=v;c++} } return c? s/c : NaN; }
+function rolling(vals,w){ return vals.map((_,k)=>{ let s=0,c=0; for(let j=Math.max(0,k-w/2);j<=Math.min(vals.length-1,k+w/2);j++) if(!isNaN(vals[j])){s+=vals[j];c++} return c>=w/3? s/c : NaN; }); }
+// Robust local-linear regression (LOESS) over the sparse monthly points.
+// The window is "the nearest q points" (so it automatically widens across gaps), weights are tricube,
+// and two bisquare passes down-weight outlier months (incident days). Returns fit and a 95% band per month.
+function smoothTrend(vals){
+  const idx=[]; vals.forEach((v,m)=>{ if(!isNaN(v)) idx.push(m); });
+  const N=idx.length, out={fit:vals.map(()=>NaN),lo:vals.map(()=>NaN),hi:vals.map(()=>NaN)};
+  if(N<4) return out;
+  const q=Math.min(N,Math.max(8,Math.round(0.15*N))), hMin=9;           // >= 8 points, >= 9 months
+  const xs=idx, ys=idx.map(m=>vals[m]), rob=new Array(N).fill(1);
+  const bw=x=>{ const d=xs.map(v=>Math.abs(v-x)).sort((a,b)=>a-b); return Math.max(hMin,d[q-1]*1.0001); };
+  const wts=(x,h)=>xs.map((v,i)=>{ const u=Math.abs(v-x)/h; return u<1? Math.pow(1-u*u*u,3)*rob[i] : 0; });
+  const fitAt=(x,h)=>{
+    const w=wts(x,h); let S0=0,S1=0,S2=0,T0=0,T1=0;
+    for(let i=0;i<N;i++){ const dx=xs[i]-x; S0+=w[i]; S1+=w[i]*dx; S2+=w[i]*dx*dx; T0+=w[i]*ys[i]; T1+=w[i]*dx*ys[i]; }
+    if(S0<=1e-9) return {y:NaN,w};
+    const det=S0*S2-S1*S1;
+    const y = det>1e-6*S0*S0*h*h ? (S2*T0-S1*T1)/det : T0/S0;       // fall back to a weighted mean if degenerate
+    return {y,w};
+  };
+  let res=[];
+  for(let pass=0;pass<3;pass++){
+    res=xs.map((x,i)=>ys[i]-fitAt(x,bw(x)).y);
+    if(pass===2) break;
+    const med=res.map(Math.abs).sort((a,b)=>a-b)[Math.floor(N/2)]||1e-6;   // bisquare robustness weights
+    res.forEach((r,i)=>{ const u=r/(6*med); rob[i]=Math.abs(u)<1? Math.pow(1-u*u,2) : 0.02; });
+  }
+  const lo=xs[0], hi=xs[N-1], hRefs=xs.map(x=>bw(x)).sort((a,b)=>a-b), hRef=hRefs[Math.floor(N/2)];
+  for(let m=lo;m<=hi;m++){
+    const h=bw(m), {y,w}=fitAt(m,h); if(isNaN(y)) continue;
+    let sw=0,sw2=0,sr=0; for(let i=0;i<N;i++){ sw+=w[i]; sw2+=w[i]*w[i]; sr+=w[i]*res[i]*res[i]; }
+    const sd=Math.sqrt(sr/Math.max(sw,1e-9)), neff=sw*sw/Math.max(sw2,1e-9);
+    const se=sd/Math.sqrt(Math.max(neff,1))*Math.sqrt(h/hRef);          // wider where the window had to stretch over gaps
+    out.fit[m]=y; out.lo[m]=y-1.96*se; out.hi[m]=y+1.96*se;
+  }
+  return out;
+}
+const monthX = m => S.meta.startYear + (m+.5)/12;
+function fmtTime(v,rng){ const y=Math.floor(v+1e-6), m=Math.floor((v-y)*12+1e-6);
+  if(rng>=4) return Math.abs(v-Math.round(v))<1e-6? String(Math.round(v)) : '';
+  return (Math.abs(v*12-Math.round(v*12))<1e-3)? `${MON[Math.min(11,Math.round((v-y)*12))]} ${String(y).slice(2)}` : ''; }
+function timeAxis(o,key){
+  const fixed=(key==='c2');                              // c2: no mouse-wheel zoom / drag-pan
+  o.scales.x.min=S.meta.startYear; o.scales.x.max=S.meta.startYear+Math.ceil(S.meta.months/12);
+  o.scales.x.afterBuildTicks=sc=>{ const r=sc.max-sc.min, st=r>14?2:r>6?1:r>3?.5:r>1.4?.25:1/12; const t=[];
+    for(let v=Math.ceil(sc.min/st-1e-9)*st; v<=sc.max+1e-9; v+=st) t.push({value:v}); sc.ticks=t; };
+  o.scales.x.ticks.callback=function(v){ return fmtTime(v,this.max-this.min); };
+  o.plugins.zoom = fixed? {zoom:{wheel:{enabled:false},pinch:{enabled:false},drag:{enabled:false}},pan:{enabled:false}}
+                        : zoomOpts();
+  o.plugins.zoom.limits={x:{min:S.meta.startYear,max:S.meta.startYear+Math.ceil(S.meta.months/12),minRange:.3}};
+}
+function zoomYears(id,n){ const ch=charts[id]; if(!ch) return; const mx=S.meta.startYear+S.meta.months/12;
+  ch.zoomScale('x',{min:n?mx-n:S.meta.startYear,max:mx},'none'); }
+let c2tok=0;
+async function renderC2(){
+  const tok=++c2tok, dirs=dirsFor(S.sel);
+  const w=S.c2win, slots=[]; for(let k=Math.max(0,S.slot-w);k<=Math.min(S.SPD-1,S.slot+w);k++) slots.push(k);
+  $('#c2sub').textContent=`Typical ${dayName()} at ${slotTime(S.slot)}${w?` (±${w*S.sm} min)`:''}, month by month (dots), with a smoothed trend (thick line) and its 95% uncertainty (shaded). The trend bridges gaps; where data are sparse the band widens. Use the buttons below to change the span.`;
+  const cubes=await Promise.all(dirs.map(d=>getCube(d.i))); if(tok!==c2tok) return;
+  const o=baseOpts(); Object.assign(o.scales.y,yTicks()); timeAxis(o,'c2');
+  o.plugins.tooltip.callbacks={title:it=>{const x=it[0].parsed.x,y=Math.floor(x); return `${MON[Math.floor((x-y)*12)]} ${y}`}, label:speedLabel};
+  o.scales.y.ticks.precision=0;
+  const ds=[];
+  dirs.forEach((d,k)=>{ const cb=cubes[k]; if(!cb) return; const ff=S.st[d.i].ff;
+    const vals=[]; for(let m=0;m<S.meta.months;m++){ const v=monthAvg(cb,m,dayList(),slots); vals.push(isNaN(v)?NaN:mt(v,ff)); }
+    const mk=a=>a.map((v,m)=>({x:monthX(m),y:isNaN(v)?null:v}));
+    const tr=smoothTrend(vals);
+    ds.push({label:`_${d.label} band lo`,data:mk(tr.lo),borderWidth:0,pointRadius:0,tension:.35,spanGaps:true,fill:false,order:3});
+    ds.push({label:`_${d.label} band`,data:mk(tr.hi),borderWidth:0,pointRadius:0,tension:.35,spanGaps:true,fill:'-1',backgroundColor:d.color+'44',order:3});
+    ds.push({label:`${d.label} monthly`,data:mk(vals),borderColor:d.color+'aa',backgroundColor:d.color+'aa',pointRadius:2.5,borderWidth:1,spanGaps:false,showLine:false,order:1});
+    ds.push({label:`${d.label} trend`,data:mk(tr.fit),borderColor:d.color+'cc',backgroundColor:d.color,pointRadius:0,borderWidth:6,borderCapStyle:'round',tension:.35,spanGaps:true,order:2});
+  });
+  o.plugins.legend.labels.filter=(it,data)=>!data.datasets[it.datasetIndex].label.startsWith('_');
+  o.plugins.tooltip.filter=it=>!it.dataset.label.startsWith('_');
+  mkChart('c2',{type:'line',data:{datasets:ds},options:o});
+  zoomYears('c2',S.c2range);
+}
+
+// ---- week heatmap (canvas)
+function sizeCanvas(cv,hCss){ const dpr=devicePixelRatio||1, w=cv.clientWidth; cv.width=Math.round(w*dpr); cv.height=Math.round(hCss*dpr); cv.style.height=hCss+'px';
+  const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,hCss); return {ctx,w,h:hCss}; }
+function renderWeekHeat(){
+  const cv=$('#weekHeat'), dirs=dirsFor(S.sel), ys=yearsSel();
+  const PH=206, T0=18, B=20, L_=34;
+  const {ctx,w,h}=sizeCanvas(cv,PH*dirs.length), cw=(w-L_-4)/S.SPD, ch=(PH-T0-B)/7;
+  ctx.font='11px system-ui';
+  dirs.forEach((dr,n)=>{ const y0=n*PH, s=S.st[dr.i];
+    ctx.fillStyle=css('--ink'); ctx.font='600 12px system-ui'; ctx.fillText(`${dirLabel(dr.i)}`,2,y0+12); ctx.font='11px system-ui';
+    for(let d=0;d<7;d++){
+      ctx.fillStyle=css('--muted'); ctx.fillText(DAYS[d],2,y0+T0+d*ch+ch/2+4);
+      const p=profile(dr.i,ys,[d]);
+      for(let sl=0;sl<S.SPD;sl++){ ctx.fillStyle=speedColor(p[sl],s.ff); ctx.fillRect(L_+sl*cw,y0+T0+d*ch,cw+.5,ch-1); }
+    }
+    ctx.fillStyle=css('--muted'); for(let hr=0;hr<24;hr+=3){ ctx.fillText(hourLabel(hr),L_+hr*60/S.sm*cw,y0+PH-6); }
+    ctx.strokeStyle='#000'; ctx.lineWidth=2; for(const d of dayList()) ctx.strokeRect(L_+S.slot*cw,y0+T0+d*ch,cw,ch-1);
+  });
+  cv.onclick=e=>{ const r=cv.getBoundingClientRect(), x=e.clientX-r.left-L_, yy=e.clientY-r.top, n=Math.floor(yy/PH), y=yy-n*PH-T0;
+    const sl=Math.floor(x/cw), d=Math.floor(y/ch); if(sl>=0&&sl<S.SPD&&d>=0&&d<7&&dirs[n]){S.slot=sl;S.dayMode=d; S.sel=canon(dirs[n].i); refresh()} };
+}
+
+// ---- corridor time-space
+function renderTS(){
+  const ys=yearsSel(), dows=dayList(), dirs=dirsFor(S.sel);
+  const panels=dirs.map(d=>{ const list=S.corr[S.st[d.i].ck]; return {d,list,profs:list.map(i=>profile(i,ys,dows))}; });
+  const l0=panels[0].list;
+  $('#corrWho').textContent=`${S.st[S.sel].fwy} · ${l0.length} detectors · PM ${S.st[l0[0]].pm.toFixed(0)}–${S.st[l0[l0.length-1]].pm.toFixed(0)}`;
+  const PH=300, T0=20, B=20, L_=38, cv=$('#tsHeat'), {ctx,w,h}=sizeCanvas(cv,PH*panels.length);
+  const cw=(w-L_-4)/S.SPD;
+  panels.forEach((P,n)=>{
+    const y0=n*PH, list=P.list, rh=(PH-T0-B)/list.length;
+    ctx.font='600 12px system-ui'; ctx.fillStyle=css('--ink'); ctx.fillText(dirLabel(P.d.i)+'  (postmile increases upward)',2,y0+13); ctx.font='11px system-ui';
+    for(let k=0;k<list.length;k++){ const y=y0+T0+(list.length-1-k)*rh, ff=S.st[list[k]].ff;
+      for(let sl=0;sl<S.SPD;sl++){ ctx.fillStyle=speedColor(P.profs[k][sl],ff); ctx.fillRect(L_+sl*cw,y,cw+.5,rh+.5); } }
+    ctx.fillStyle=css('--muted');
+    const p0=S.st[list[0]].pm, p1=S.st[list[list.length-1]].pm;
+    for(let t=0;t<=4;t++){ const pm=p0+(p1-p0)*t/4, y=y0+T0+(PH-T0-B)*(1-t/4); ctx.fillText(pm.toFixed(0),2,Math.min(y0+PH-B,Math.max(y0+T0+8,y+4))); }
+    for(let hr=0;hr<24;hr+=3) ctx.fillText(hourLabel(hr),L_+hr*60/S.sm*cw,y0+PH-6);
+    ctx.strokeStyle='#000'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+    ctx.beginPath(); const x=L_+(S.slot+.5)*cw; ctx.moveTo(x,y0+T0); ctx.lineTo(x,y0+PH-B); ctx.stroke();
+    const cpos=list.indexOf(P.d.i), yy=y0+T0+(list.length-1-cpos)*rh+rh/2; ctx.beginPath(); ctx.moveTo(L_,yy); ctx.lineTo(w-4,yy); ctx.stroke(); ctx.setLineDash([]);
+  });
+  const pick=e=>{ const r=cv.getBoundingClientRect(), xx=e.clientX-r.left-L_, yy=e.clientY-r.top, n=Math.floor(yy/PH); const P=panels[n]; if(!P) return null;
+    const rh=(PH-T0-B)/P.list.length, y=yy-n*PH-T0, sl=Math.floor(xx/cw), k=P.list.length-1-Math.floor(y/rh);
+    return (sl>=0&&sl<S.SPD&&k>=0&&k<P.list.length)? {sl,k,P}:null; };
+  cv.onclick=e=>{ const p=pick(e); if(p){ S.slot=p.sl; S.sel=canon(p.P.list[p.k]); refresh(); } };
+  cv.onmousemove=e=>{ const p=pick(e); $('#tsInfo').textContent = p? `${dirLabel(p.P.list[p.k])} · PM ${S.st[p.P.list[p.k]].pm.toFixed(1)} · ${slotTime(p.sl)} · ${isNaN(p.P.profs[p.k][p.sl])?'no data':Math.round(p.P.profs[p.k][p.sl])+' mph'}` : ' '; };
+}
+// ---- C3 congestion-hours trend for the corridor
+let c3tok=0, c3key='';
+async function renderC3(){
+  const dirs=dirsFor(S.sel), dows=dayList(), thr=S.thr;
+  const key=dirs.map(d=>S.st[d.i].ck).join('+')+'|'+dows+'|'+thr+'|'+S.useEst; if(key===c3key && charts.c3) return; c3key=key;
+  const tok=++c3tok, lists=dirs.map(d=>S.corr[S.st[d.i].ck]);
+  const all=[].concat(...lists);
+  $('#c3sub').textContent='Loading freeway history…';
+  await getCubes(all,(d,n)=>{ if(tok===c3tok) $('#c3sub').textContent=`Loading freeway history… ${d}/${n}`; });
+  if(tok!==c3tok) return;
+  const ds=[], mk=a=>a.map((v,m)=>({x:monthX(m),y:isNaN(v)?null:v}));
+  dirs.forEach((dr,n)=>{ const list=lists[n];
+    const wts=list.map((_,k)=>{ const a=S.st[list[Math.max(0,k-1)]].pm, b=S.st[list[Math.min(list.length-1,k+1)]].pm; return Math.max(.05,Math.min(3,(b-a)/2)); });
+    const vals=[];
+    for(let m=0;m<S.meta.months;m++){
+      let num=0,den=0;
+      list.forEach((i,k)=>{ const cb=S.cube[ckey(i)]; if(!cb) return; let fr=0,nd=0;
+        for(const d of dows){ let below=0,valid=0;
+          for(let sl=0;sl<S.HSPD;sl++){ const v=cb[(m*7+d)*S.HSPD+sl]; if(v!==255){valid++; if(v<thr) below++;} }
+          if(valid>=S.HSPD*.8){ fr+=below/valid; nd++; } }
+        if(nd){ num+=wts[k]*(fr/nd)*24; den+=wts[k]; } });
+      vals.push(den? num/den : NaN);
+    }
+    const tr=smoothTrend(vals), lab=dirLabel(dr.i);
+    ds.push({label:`_${lab} band lo`,data:mk(tr.lo),borderWidth:0,pointRadius:0,tension:.35,spanGaps:true,fill:false,order:3});
+    ds.push({label:`_${lab} band`,data:mk(tr.hi),borderWidth:0,pointRadius:0,tension:.35,spanGaps:true,fill:'-1',backgroundColor:dr.color+'44',order:3});
+    ds.push({label:`${lab} monthly`,data:mk(vals),borderColor:dr.color+'aa',backgroundColor:dr.color+'aa',pointRadius:2.5,borderWidth:1,spanGaps:false,showLine:false,order:1});
+    ds.push({label:`${lab} trend`,data:mk(tr.fit),borderColor:dr.color+'cc',backgroundColor:dr.color,pointRadius:0,borderWidth:6,borderCapStyle:'round',tension:.35,spanGaps:true,order:2});
+  });
+  $('#c3sub').textContent=`Average hours per ${dayName()} that a typical point on the corridor is slower than ${thr} mph: monthly values (dots), smoothed trend (thick line) and its 95% uncertainty (shaded). Scroll/drag to zoom.`;
+  const o=baseOpts(); o.scales.y.title.text='hours / day congested'; o.scales.y.min=0; timeAxis(o,'c3');
+  o.plugins.legend.labels.filter=(it,data)=>!data.datasets[it.datasetIndex].label.startsWith('_');
+  o.plugins.tooltip.filter=it=>!it.dataset.label.startsWith('_');
+  o.plugins.tooltip.callbacks={title:it=>{const x=it[0].parsed.x,y=Math.floor(x); return `${MON[Math.floor((x-y)*12)]} ${y}`}, label:c=>`${c.dataset.label}: ${c.parsed.y.toFixed(1)} h/day`};
+  mkChart('c3',{type:'line',data:{datasets:ds},options:o});
+  zoomYears('c3',S.c3range);
+}
+
+// ---- Route
+function renderRoute(){
+  const a=S.st[S.sel], b=S.selB>=0? S.st[S.selB]:null, msg=$('#routeMsg');
+  $('#rA').textContent=`${a.fwy} PM ${a.pm.toFixed(1)}`; $('#rB').textContent=b?`PM ${b.pm.toFixed(1)}`:'—';
+  const show=t=>{ msg.style.display=t?'block':'none'; msg.textContent=t||''; };
+  if(!b){ show('Choose a second point (B) further along the same freeway.'); if(charts.c4){charts.c4.destroy();delete charts.c4} $('#routeStats').innerHTML=''; return; }
+  if(a.ck!==b.ck){ show('A and B must be on the same freeway.'); return; }
+  show('');
+  const sliceOf=(ai,bi)=>{ const A=S.st[ai], list=S.corr[A.ck]; const pa=A.cpos, pb=S.st[bi].cpos; return list.slice(Math.min(pa,pb),Math.max(pa,pb)+1); };
+  const mkRoute=idx=>{
+    const lens=idx.map((i,k)=>{ const prev=S.st[idx[Math.max(0,k-1)]].pm, next=S.st[idx[Math.min(idx.length-1,k+1)]].pm; return Math.max(.05,Math.min(2,(next-prev)/2)); });
+    const tt=(ys,dows)=>{ const profs=idx.map(i=>profile(i,ys,dows)); const r=[];
+      for(let sl=0;sl<S.SPD;sl++){ let t=0,ok=true; idx.forEach((i,k)=>{ const v=profs[k][sl]; if(isNaN(v)){ok=false;return} t+=lens[k]/Math.max(5,v)*60; }); r.push(ok?t:null); } return r; };
+    return {idx,miles:lens.reduce((x,y)=>x+y,0),tt,ffT:idx.reduce((t,i,k)=>t+lens[k]/S.st[i].ff*60,0)};
+  };
+  const fwd=(a.dir==='N'||a.dir==='E')? b.cpos>a.cpos : b.cpos<a.cpos;
+  const R=[{r:mkRoute(sliceOf(a.i,b.i)),color:css('--c1'),name:`${DIRWORD[a.dir]}`}];
+  if(R[0].r.idx.length<2){ show('Pick points further apart.'); return; }
+  const oa=S.both?oppOf(a.i):null, ob=S.both?oppOf(b.i):null;
+  if(oa!==null&&ob!==null&&oa!==ob){ const r2=mkRoute(sliceOf(oa,ob)); if(r2.idx.length>=2) R.push({r:r2,color:css('--c3'),name:`${DIRWORD[S.st[oa].dir]} (return)`}); }
+  const ds=[], xy=v=>v.map((y,sl)=>({x:(sl+.5)*S.sm/60,y}));
+  R.forEach(o=>{ o.cur=o.r.tt(yearsSel(),dayList());
+    ds.push({label:`${o.name} ${yearsLabel()}`,data:xy(o.cur),borderColor:o.color,backgroundColor:o.color,borderWidth:3,pointRadius:0,tension:.25});
+    if(S.cmp!==null) ds.push({label:`${o.name} ${S.cmp}`,data:xy(o.r.tt([S.cmp],dayList())),borderColor:o.color,backgroundColor:o.color,borderDash:[6,4],borderWidth:2,pointRadius:0,tension:.25});
+    ds.push({label:`${o.name} free-flow`,data:[{x:0,y:o.r.ffT},{x:24,y:o.r.ffT}],borderColor:o.color+'99',borderDash:[2,4],pointRadius:0,borderWidth:1.2}); });
+  const o=baseOpts(); o.scales.y.title.text='travel time (min)'; o.scales.y.min=0;
+  o.scales.x.min=0;o.scales.x.max=24; o.scales.x.ticks.callback=v=>hourLabel(v); o.scales.x.ticks.stepSize=3;
+  o.plugins.tooltip.callbacks={title:it=>'Leave '+hourLabel(it[0].parsed.x), label:c=>`${c.dataset.label}: ${Math.round(c.parsed.y)} min`};
+  o.onClick=(e,el,ch)=>{ const x=ch.scales.x.getValueForPixel(e.x); S.slot=Math.max(0,Math.min(S.SPD-1,Math.floor(x*60/S.sm))); refresh(); };
+  CURSORS.c4=()=>[(S.slot+.5)*S.sm/60]; const ch=mkChart('c4',{type:'line',data:{datasets:ds},options:o,plugins:[cursorPlugin]});
+  $('#routeStats').innerHTML=R.map((o,n)=>{ const cur=o.cur; let best=-1,worst=-1; cur.forEach((v,k)=>{ if(v==null) return; if(best<0||v<cur[best]) best=k; if(worst<0||v>cur[worst]) worst=k; });
+    if(best<0) return `<p class="msg"><b>${o.name}</b>: not enough data.</p>`;
+    const atNow=cur[S.slot];
+    return `<p class="msg"><b style="color:${o.color}">${o.name}</b> · ${o.r.miles.toFixed(1)} miles${n===0&&!fwd?' <span class="note">(B is behind A in the direction of travel; showing the stretch anyway)</span>':''}<br>
+      Best departure <b>${slotTime(best)}</b>: <b>${cur[best].toFixed(0)} min</b> · worst <b>${slotTime(worst)}</b>: <b>${cur[worst].toFixed(0)} min</b> (+${(cur[worst]-cur[best]).toFixed(0)} min)<br>
+      Free-flow: ${o.r.ffT.toFixed(0)} min${atNow!=null?` · leaving ${slotTime(S.slot)}: <b>${atNow.toFixed(0)} min</b>`:''}</p>`; }).join('')
+    +'<p class="note">Travel time uses speeds at the departure moment (no time-shift as you drive).</p>';
+}
+
+// ---- Compare tab: summary of the change versus the comparison year
+function renderCmp(){
+  const box=$('#cmpSummary');
+  if(S.cmp===null){ box.innerHTML='<p class="msg">No comparison selected. Choose a year above.</p>'; return; }
+  const dows=dayList(), cur=computeField(S.slot,yearsSel(),dows), base=computeField(S.slot,[S.cmp],dows);
+  let n=0,sum=0,slower=0,faster=0;
+  for(let i=0;i<S.N;i++){ const a=cur[i], b=base[i]; if(isNaN(a)||isNaN(b)) continue; const d=a-b; n++; sum+=d; if(d<=-5) slower++; else if(d>=5) faster++; }
+  const pc=x=>Math.round(100*x/Math.max(1,n));
+  box.innerHTML = n? `<p class="msg">Typical ${dayName()} at ${slotTime(S.slot)}: <b>${yearsLabel()}</b> versus <b>${S.cmp}</b>, across ${n} detectors with data in both.<br>
+      Average change: <b>${signed(sum/n)} mph</b> &middot; <b>${pc(slower)}%</b> are 5+ mph slower &middot; <b>${pc(faster)}%</b> are 5+ mph faster.</p>
+    <p class="note">The Region tab lists the freeways that changed the most.</p>`
+    : '<p class="msg">No detectors have data in both periods.</p>';
+}
+
+// ---- Commute asymmetry
+// "Delay" = area above the speed curve: sum over time of max(0, free-flow - speed), in mph*hours.
+// Morning = 12a-12p, evening = 12p-12a.  Positive values: S/W-bound is slow in the morning and/or N/E-bound
+// in the evening (orange); negative: the reverse (blue).
+const isInc = i => S.st[i].dir==='N' || S.st[i].dir==='E';
+let asymCache={key:''};
+function delayAreas(){
+  const dows=dayList(), ys=yearsSel(), key=[dows,S.y0,S.y1,S.useEst].join('|');
+  if(asymCache.key===key) return asymCache;
+  const N=S.N, am=new Float32Array(N).fill(NaN), pm=new Float32Array(N).fill(NaN), half=S.SPD/2, dt=S.sm/60;
+  for(let i=0;i<N;i++){ const ff=S.st[i].ff; let a=0,na=0,p=0,np=0;
+    for(let s=0;s<S.SPD;s++){ const v=cell(i,ys,dows,s); if(isNaN(v)) continue; const d=Math.max(0,ff-v); if(s<half){a+=d;na++} else {p+=d;np++} }
+    if(na>=0.8*half) am[i]=a*dt*(half/na);                    // need >= 80% of the half-day; scale up for the rest
+    if(np>=0.8*half) pm[i]=p*dt*(half/np);
+  }
+  asymCache={key,am,pm}; return asymCache;
+}
+function pairOf(i){ const j=oppOf(i); if(j===null) return null; return isInc(i)? {inc:i,dec:j} : {inc:j,dec:i}; }
+function asymOf(i){
+  const pr=pairOf(i); if(!pr) return NaN; const {am,pm}=delayAreas();
+  const aI=am[pr.inc], aD=am[pr.dec], pI=pm[pr.inc], pD=pm[pr.dec];
+  switch(S.asymMode){
+    case 'total': return (aI+pI)-(aD+pD);
+    case 'am':    return aD-aI;
+    case 'pm':    return pI-pD;
+    default:      return (aD-aI)+(pI-pD);                      // tide
+  }
+}
+const ASTOPS=[[0,[33,102,172]],[.5,[238,238,238]],[1,[217,95,2]]];
+const MSTOPS=[[0,[245,245,245]],[.4,[253,208,162]],[.7,[241,105,19]],[1,[127,39,4]]];
+function asymScale(vals){ const a=[]; for(const v of vals) if(!isNaN(v)) a.push(Math.abs(v)); a.sort((x,y)=>x-y); return Math.max(1,a.length? a[Math.floor(a.length*0.95)] : 1); }
+const asymColor=(v,R)=> isNaN(v)? '#c8ccd2' : S.asymAbs? lerpStops(MSTOPS,Math.min(1,Math.abs(v)/R)) : lerpStops(ASTOPS,(Math.max(-R,Math.min(R,v))/R+1)/2);
+function recolorAsym(){
+  field=new Float32Array(S.N); for(let i=0;i<S.N;i++) field[i]=asymOf(i);
+  S.asymR=asymScale(field);
+  for(const pl of segs){ const x=field[pl._a], y=field[pl._b]; pl.setStyle({color:asymColor(isNaN(x)?y:isNaN(y)?x:(x+y)/2,S.asymR)}); }
+}
+const ASYM_TEXT={
+  tide:['N/E-bound slow in the morning, S/W-bound slow in the evening','S/W-bound slow in the morning, N/E-bound slow in the evening'],
+  total:['S/W-bound has more total delay','N/E-bound has more total delay'],
+  am:['N/E-bound slower in the morning','S/W-bound slower in the morning'],
+  pm:['S/W-bound slower in the evening','N/E-bound slower in the evening']};
+function drawAsymLegend(lg){
+  const R=Math.round(S.asymR||1), [neg,pos]=ASYM_TEXT[S.asymMode];
+  if(S.asymAbs){
+    const g=MSTOPS.map(([p,c])=>`rgb(${c}) ${p*100}%`).join(',');
+    lg.innerHTML=`<b>Asymmetry (size only)</b><div class="bar" style="background:linear-gradient(90deg,${g})"></div><div class="lbls"><span>0 balanced</span><span>${R}+ mph·h lopsided</span></div>`;
+  } else {
+    const g=ASTOPS.map(([p,c])=>`rgb(${c}) ${p*100}%`).join(',');
+    lg.innerHTML=`<b>Commute asymmetry</b> <span class="note">(mph·hours)</span><div class="bar" style="background:linear-gradient(90deg,${g})"></div>
+      <div class="lbls"><span>−${R}</span><span>0</span><span>+${R}</span></div>
+      <div class="note" style="margin-top:4px;max-width:230px"><span style="color:rgb(33,102,172)">&#9632;</span> ${neg}<br><span style="color:rgb(217,95,2)">&#9632;</span> ${pos}</div>`;
+  }
+  if(S.useEst) lg.insertAdjacentHTML('beforeend','<div class="note" style="margin-top:4px">includes PeMS-estimated values (not measurements)</div>');
+}
+function asymTip(i){
+  const s=S.st[i], pr=pairOf(i), v=field?field[i]:NaN; if(!pr||isNaN(v)) return `<b>${s.fwy}</b> · postmile ${s.pm.toFixed(1)}<br>no data for both directions`;
+  const {am,pm}=delayAreas(), r=x=>Math.round(x), di=DIRWORD[S.st[pr.inc].dir], dd=DIRWORD[S.st[pr.dec].dir];
+  return `<b>${s.fwy}</b> · postmile ${s.pm.toFixed(1)}<br>asymmetry ${signed(v)} mph·h<br>morning delay: ${di} ${r(am[pr.inc])} · ${dd} ${r(am[pr.dec])}<br>evening delay: ${di} ${r(pm[pr.inc])} · ${dd} ${r(pm[pr.dec])}`;
+}
+function renderAsym(){
+  const pr=pairOf(S.sel), s0=S.st[S.sel];
+  $('#asymWho').innerHTML=`○ ${s0.fwy} · postmile ${s0.pm.toFixed(1)} <span class="note">(click the map to move)</span>`;
+  const ys=yearsSel(), dows=dayList(), ds=[];
+  const dirs=pr? [{i:pr.inc,color:css('--c1')},{i:pr.dec,color:css('--c3')}] : [{i:S.sel,color:css('--c1')}];
+  for(const d of dirs){ const ff=S.st[d.i].ff, prof=profile(d.i,ys,dows), label=DIRWORD[S.st[d.i].dir];
+    const xy=f=>Array.from(prof,(v,s)=>({x:(s+.5)*S.sm/60,y:isNaN(v)?null:f(v)}));
+    ds.push({label:`_${label} free-flow`,data:xy(()=>ff),borderColor:d.color+'66',borderDash:[3,4],borderWidth:1,pointRadius:0});
+    ds.push({label,data:xy(v=>v),borderColor:d.color,backgroundColor:d.color+'38',fill:'-1',borderWidth:2.5,pointRadius:0,tension:.25}); }
+  const o=baseOpts(); o.scales.y.title.text='mph'; o.scales.y.min=0; o.scales.y.ticks.precision=0;
+  o.scales.x.min=0; o.scales.x.max=24; o.scales.x.ticks.callback=v=>hourLabel(v); o.scales.x.ticks.stepSize=3;
+  o.plugins.legend.labels.filter=(it,data)=>!data.datasets[it.datasetIndex].label.startsWith('_');
+  o.plugins.tooltip.filter=it=>!it.dataset.label.startsWith('_');
+  o.plugins.tooltip.callbacks={title:it=>hourLabel(it[0].parsed.x), label:speedLabel};
+  CURSORS.c7=()=>[12];                                         // noon: boundary between "morning" and "evening"
+  mkChart('c7',{type:'line',data:{datasets:ds},options:o,plugins:[cursorPlugin]});
+
+  const {am,pm}=delayAreas(), r=x=>isNaN(x)?'–':Math.round(x), v=asymOf(S.sel);
+  let html='';
+  if(pr){
+    const row=i=>`<tr><td>${DIRWORD[S.st[i].dir]}</td><td class="n">${r(am[i])}</td><td class="n">${r(pm[i])}</td><td class="n">${r(am[i]+pm[i])}</td></tr>`;
+    html+=`<table><tr><th>Delay (mph·hours)</th><th class="n">morning</th><th class="n">evening</th><th class="n">total</th></tr>${row(pr.inc)}${row(pr.dec)}</table>`;
+    if(!isNaN(v)){ const [neg,pos]=ASYM_TEXT[S.asymMode];
+      html+=`<p class="msg"><b>${signed(v)} mph·h</b> — ${Math.abs(v)<0.5? 'balanced' : (v>0? pos : neg)}</p>`; }
+  } else html='<p class="msg">No opposite-direction detector nearby, so asymmetry can\'t be computed here.</p>';
+  $('#asymSummary').innerHTML=html;
+
+  // most lopsided locations (one per stretch: >= 3 miles apart on the same freeway)
+  const cand=[]; for(let i=0;i<S.N;i++){ if(!isInc(i)) continue; const x=asymOf(i); if(!isNaN(x)) cand.push([i,x]); }
+  cand.sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
+  const keep=[]; for(const c of cand){ if(keep.length>=10) break; const s=S.st[c[0]];
+    if(!keep.some(k=>S.st[k[0]].fwy===s.fwy && Math.abs(S.st[k[0]].pm-s.pm)<3)) keep.push(c); }
+  $('#asymList').innerHTML='<table>'+keep.map(([i,x])=>`<tr class="click" data-i="${i}"><td>${S.st[i].fwy}</td><td>PM ${S.st[i].pm.toFixed(1)}</td><td class="n ${S.asymAbs?'':(x>0?'good':'bad')}">${S.asymAbs?Math.round(Math.abs(x)):signed(x)} mph·h</td></tr>`).join('')+'</table>';
+  document.querySelectorAll('#asymList tr.click').forEach(tr=>tr.onclick=()=>{ S.sel=canon(+tr.dataset.i); const s=S.st[S.sel]; map.setView([s.lat,s.lon],Math.max(map.getZoom(),12)); refresh(); });
+}
+
+// ---- Region tab
+function renderTrends(){
+  const dows=dayList(), thr=S.thr, o1=baseOpts();
+  const frac=(ys,sl)=>{ let c=0,n=0; for(let i=0;i<S.N;i++){ const v=cell(i,ys,dows,sl); if(!isNaN(v)){n++; if(v<thr) c++;} } return n? 100*c/n : null; };
+  $('#c5sub').textContent=`% of sensors slower than ${thr} mph on a typical ${dayName()} at ${slotTime(S.slot)}, by year.`;
+  const ds=[{label:'% congested',data:S.years.map(y=>frac([y],S.slot)),backgroundColor:S.years.map(y=>y>=S.y0&&y<=S.y1?css('--c1'):css('--c1')+'55'),borderRadius:3}];
+  const o=baseOpts(); o.scales.x={type:'category',ticks:{color:css('--muted')},grid:{display:false}}; o.scales.y.title.text='% of sensors'; o.scales.y.min=0;
+  o.plugins.legend.display=false; o.interaction={mode:'index',intersect:false};
+  o.plugins.tooltip.callbacks={label:c=>`${Math.round(c.parsed.y)}% of sensors`};
+  o.onClick=(e,els)=>{ if(els.length){ const y=S.years[els[0].index]; setYearRange(y,y); } };
+  mkChart('c5',{type:'bar',data:{labels:S.years,datasets:ds},options:o});
+
+  const line=(ys,label,color,dash)=>({label,data:Array.from({length:S.SPD},(_,sl)=>({x:(sl+.5)*S.sm/60,y:frac(ys,sl)})),borderColor:color,backgroundColor:color,borderWidth:2.5,pointRadius:0,tension:.25,borderDash:dash});
+  const o6=baseOpts(); o6.scales.y.title.text='% of sensors'; o6.scales.y.min=0; o6.scales.x.min=0;o6.scales.x.max=24;
+  o6.scales.x.ticks.callback=v=>hourLabel(v); o6.scales.x.ticks.stepSize=3;
+  o6.plugins.tooltip.callbacks={title:it=>hourLabel(it[0].parsed.x), label:c=>`${c.dataset.label}: ${Math.round(c.parsed.y)}% of sensors`};
+  const d6=[line(yearsSel(),yearsLabel(),css('--c1')) ]; if(S.cmp!==null) d6.push(line([S.cmp],String(S.cmp),css('--c2'),[6,4]));
+  o6.onClick=(e,el,ch)=>{ const x=ch.scales.x.getValueForPixel(e.x); S.slot=Math.max(0,Math.min(S.SPD-1,Math.floor(x*60/S.sm))); refresh(); };
+  CURSORS.c6=()=>[(S.slot+.5)*S.sm/60]; mkChart('c6',{type:'line',data:{datasets:d6},options:o6,plugins:[cursorPlugin]});
+
+  // slowest per corridor
+  const cur=computeField(S.slot,yearsSel(),dows), rows=[];
+  for(const k in S.corr){ let bi=-1,bv=1e9; for(const i of S.corr[k]){ const v=cur[i]; if(!isNaN(v)&&v<bv){bv=v;bi=i} } if(bi>=0) rows.push([bi,bv]); }
+  rows.sort((a,b)=>a[1]-b[1]);
+  $('#slowList').innerHTML='<table>'+rows.slice(0,8).map(([i,v])=>`<tr class="click" data-i="${i}"><td>${S.st[i].fwy} ${S.st[i].dir}</td><td>PM ${S.st[i].pm.toFixed(1)}</td><td class="n">${Math.round(v)} mph</td></tr>`).join('')+'</table>';
+  // biggest changes
+  const baseY = S.cmp!==null? S.cmp : S.years[0];
+  $('#chgSub').textContent=`Average speed change by freeway at this day & time: ${yearsLabel()} vs ${baseY}.`;
+  const base=computeField(S.slot,[baseY],dows), ch=[];
+  for(const k in S.corr){ let s=0,c=0; for(const i of S.corr[k]){ const d=cur[i]-base[i]; if(!isNaN(d)){s+=d;c++} } if(c>3) ch.push([k,s/c,S.corr[k][Math.floor(S.corr[k].length/2)]]); }
+  ch.sort((a,b)=>a[1]-b[1]);
+  const fmt=r=>`<tr class="click" data-i="${r[2]}"><td>${S.st[r[2]].fwy} ${S.st[r[2]].dir}</td><td class="n ${r[1]<0?'bad':'good'}">${signed(r[1])} mph</td></tr>`;
+  $('#chgList').innerHTML='<table><tr><th colspan=2>Slower</th></tr>'+ch.slice(0,5).map(fmt).join('')+'<tr><th colspan=2>Faster</th></tr>'+ch.slice(-5).reverse().map(fmt).join('')+'</table>';
+  document.querySelectorAll('#pane-trends tr.click').forEach(tr=>tr.onclick=()=>{ const i=canon(+tr.dataset.i); S.sel=i; map.setView([S.st[i].lat,S.st[i].lon],Math.max(map.getZoom(),12)); refresh(); });
+}
+
+function renderTab(){
+  if(S.sel<0) return;
+  if(S.tab==='point'){ renderC1(); renderC2(); renderWeekHeat(); }
+  else if(S.tab==='corr'){ renderTS(); renderC3(); }
+  else if(S.tab==='route'){ renderRoute(); }
+  else if(S.tab==='asym'){ renderAsym(); }
+  else if(S.tab==='cmp'){ renderCmp(); }
+  else renderTrends();
+}
+boot();
+</script>
+</body>
+</html>

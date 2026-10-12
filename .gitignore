@@ -1,0 +1,20 @@
+# Raw Caltrans PeMS downloads and station metadata (large; re-download from https://pems.dot.ca.gov)
+d04_text_*
+
+# Per-file processing cache (regenerated from the raw files by tools/pems_to_app.py)
+pems_cache/
+
+# Logs, local helpers, bookkeeping
+*.log
+missing_files.txt
+
+# Python
+__pycache__/
+*.pyc
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+upload_staging/
